@@ -1,5 +1,8 @@
 # Content Understanding availability patterns
 
+> [!NOTE]
+> **Work in progress (WIP).** These guides and the example lab are under active development. Details may change or be incomplete. Use them for learning and experimentation, not as production-ready guidance.
+
 Learn how to keep an Azure AI Content Understanding (CU) workload available, then try a deployable multi-region example. This repository combines animated, offline architecture guides with an Azure-backed request lab that makes API Management (APIM) routing, URL rewriting and failover visible.
 
 **Start without Azure:** Download or clone this repository and open [README.html](README.html) in a browser. Compare four availability stages, then open the [single-APIM walkthrough](single-apim-failover.html) to step through normal operations, degraded primary and failover. Both guides run offline, use synthetic examples and require no credentials.

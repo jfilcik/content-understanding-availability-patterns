@@ -28,6 +28,8 @@ test("OFFLINE GUIDE: all scenarios teach rewrites, POST-to-success duration and 
   page.on("request", (request) => { if (/^https?:/.test(request.url())) network.push(request.url()); });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(guideUrl);
+  await expect(page.locator("#work-in-progress")).toBeVisible();
+  await expect(page.locator("#work-in-progress")).toContainText("Work in progress (WIP).");
 
   const normal = await walkScenario(page, "1. Normal operations");
   expect(normal).toHaveLength(4);

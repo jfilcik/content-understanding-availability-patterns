@@ -60,6 +60,9 @@ class TeachingSiteTests(unittest.TestCase):
             for name in ("index.html", "README.html", "single-apim-failover.html"):
                 content = (output / name).read_text(encoding="utf-8")
                 self.assertIn("connect-src 'none'", content)
+                self.assertIn('id="work-in-progress"', content)
+                self.assertIn("Work in progress (WIP).", content)
+                self.assertLess(content.index('id="work-in-progress"'), content.index('class="intro"'))
                 self.assertNotIn('href="README.md', content)
                 self.assertIn("https://github.com/example/availability-patterns/blob/main/README.md", content)
                 self.assertNotIn('src="http', content)
