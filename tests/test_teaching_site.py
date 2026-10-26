@@ -63,6 +63,13 @@ class TeachingSiteTests(unittest.TestCase):
                 self.assertIn('id="work-in-progress"', content)
                 self.assertIn("Work in progress (WIP).", content)
                 self.assertLess(content.index('id="work-in-progress"'), content.index('class="intro"'))
+                header = content.split("<header", 1)[1].split("</header>", 1)[0]
+                self.assertIn('aria-label="Guide navigation"', header)
+                self.assertIn('href="https://github.com/jfilcik/content-understanding-availability-patterns"', header)
+                self.assertIn('href="README.html"', header)
+                self.assertIn('href="single-apim-failover.html"', header)
+                self.assertIn('aria-hidden="true"', header)
+                self.assertEqual(1, header.count('aria-current="page"'))
                 self.assertNotIn('href="README.md', content)
                 self.assertIn("https://github.com/example/availability-patterns/blob/main/README.md", content)
                 self.assertNotIn('src="http', content)
@@ -92,6 +99,15 @@ class TeachingSiteTests(unittest.TestCase):
             content = (output / "index.html").read_text(encoding="utf-8")
             self.assertIn("blob/guide%2Freview/README.md#deploy", content)
             self.assertIn("blob/guide%2Freview/test-app/README.md#start", content)
+
+    def test_readme_guide_links_open_the_hosted_pages_instead_of_html_source(self):
+        site = "https://jfilcik.github.io/content-understanding-availability-patterns/"
+        for name in ("README.md", "test-app/README.md"):
+            content = (ROOT / name).read_text(encoding="utf-8")
+            links = re.findall(r"\[[^\]]+\]\(([^)\s]+)\)", content)
+            self.assertIn(site, links, name)
+            self.assertIn(site + "single-apim-failover.html", links, name)
+            self.assertFalse(any(link.endswith(".html") and not urlsplit(link).scheme for link in links), name)
 
     def test_build_refuses_stale_output_instead_of_publishing_extra_files(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -4,7 +4,7 @@ CU Observatory is the live request lab for the repository's **one APIM, two regi
 
 Add your serving key in the prerequisite section at the top, then submit a document. The network trace is on the left; **Routes & resources** is the first/default tab in the right pane, followed by **Request inspector**. Drag the divider to give either pane more room. Analysis and polling go directly to APIM. An optional loopback-only Python helper supplies real Azure test controls; no additional Azure hosting is required.
 
-**Before using this app:** [deploy and provision both CU stacks](../README.md#deploy). For a no-cost, no-credentials introduction, open the [offline architecture guide](../README.html) and [APIM walkthrough](../single-apim-failover.html) instead. The live app creates potentially billable analyses and its enabled controls change real Azure settings.
+**Before using this app:** [deploy and provision both CU stacks](../README.md#deploy). For a no-cost, no-credentials introduction, open the [architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) and [APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) instead. The guides also run offline when opened from a local clone. The live app creates potentially billable analyses and its enabled controls change real Azure settings.
 
 ## Start
 

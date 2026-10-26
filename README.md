@@ -5,12 +5,12 @@
 
 Learn how to keep an Azure AI Content Understanding (CU) workload available, then try a deployable multi-region example. This repository combines animated, offline architecture guides with an Azure-backed request lab that makes API Management (APIM) routing, URL rewriting and failover visible.
 
-**Start without Azure:** Download or clone this repository and open [README.html](README.html) in a browser. Compare four availability stages, then open the [single-APIM walkthrough](single-apim-failover.html) to step through normal operations, degraded primary and failover. Both guides run offline, use synthetic examples and require no credentials.
+**Start without Azure:** Open the [availability architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) in your browser. Compare four availability stages, then open the [single-APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) to step through normal operations, degraded primary and failover. Both guides use synthetic examples and require no credentials or Azure connection. For offline viewing, download or clone the repository and open `README.html` locally.
 
 | Part | What it does | Requires Azure? |
 |---|---|---|
-| [Architecture guide](README.html) | Compares a regional baseline, broader inference/OCR capacity, two CU resources behind one APIM, and a conceptual two-gateway ingress design. | No |
-| [APIM walkthrough](single-apim-failover.html) | Animates Analyze, signed `Operation-Location` rewriting, region-pinned GETs and the failover state changes. | No |
+| [Architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) | Compares a regional baseline, broader inference/OCR capacity, two CU resources behind one APIM, and a conceptual two-gateway ingress design. | No |
+| [APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) | Animates Analyze, signed `Operation-Location` rewriting, region-pinned GETs and the failover state changes. | No |
 | Bicep, policies and deployment scripts | Deploy and provision **one regional APIM and two regional CU/Foundry stacks**, corresponding to stage 3 of the guide. | Yes |
 | [CU Observatory](test-app/README.md) | Submits real analyses, inspects requests and runs explicit failover/reset experiments against your deployment. | Yes, for analysis and management controls |
 
@@ -25,11 +25,11 @@ This is a learning sample, not a production availability guarantee. The deployme
    Set-Location content-understanding-availability-patterns
    ```
 
-2. Open `README.html` locally. Select a stage, read its trade-offs and use the animation controls. Follow the single-APIM walkthrough for the three operating states and request/response URL mappings. These are teaching simulations, not live resource observations.
+2. Open the [architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/), or open `README.html` locally. Select a stage, read its trade-offs and use the animation controls. Follow the [single-APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) for the three operating states and request/response URL mappings. These are teaching simulations, not live resource observations.
 3. To try real traffic, [prepare and deploy the Azure lab](#deploy), then [start CU Observatory](#local-test-web-app). Expect charges for APIM, model deployments, telemetry and CU usage; use a dedicated test resource group.
 4. In Observatory, add the APIM serving key, submit one analysis and select its POST/result GET rows. Compare the returned `Operation-Location`, accepting CU and new-work selection. Follow the [failover exercise](test-app/README.md#try-the-lab-in-order) before changing settings.
 
-**Viewing HTML on GitHub:** The repository file viewer displays HTML source; it does not run the animations. Download the HTML files together and open them locally, or enable the included [GitHub Pages workflow](#publish-the-html-guides-with-github-pages). GitHub Pages hosts only the teaching guides, not the Azure control helper or live lab.
+**Viewing HTML on GitHub:** The repository file viewer displays HTML source; it does not run the animations. Use the hosted guide links above, or download both HTML files together and open them locally. GitHub Pages hosts only the teaching guides, not the Azure control helper or live lab. To publish your own fork, follow the [GitHub Pages setup](#publish-the-html-guides-with-github-pages).
 
 ## Deployed architecture
 
@@ -340,3 +340,5 @@ Before production, verify actual APIM policy acceptance, scoped management acces
 ## Attribution and license
 
 This sample builds on [p-prakash/multi-region-ha-acu](https://github.com/p-prakash/multi-region-ha-acu). The original MIT license and copyright notice are retained in [LICENSE](LICENSE). The architecture guides and lab are examples, not an Azure service SLA or a commitment that every conceptual stage is implemented here.
+
+The guides use the GitHub mark from [Primer Octicons](https://github.com/primer/octicons), under its [MIT license](https://github.com/primer/octicons/blob/main/LICENSE). Its license notice is embedded in both HTML files.

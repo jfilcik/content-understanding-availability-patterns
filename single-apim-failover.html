@@ -20,9 +20,14 @@
     :focus-visible { outline: 3px solid #9e5300; outline-offset: 4px; }
     .skip { position: absolute; top: -100px; left: 16px; background: white; padding: 12px; z-index: 10; }
     .skip:focus { top: 10px; }
-    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .masthead-brand { display: grid; gap: 4px; }
     .masthead span { color: #c6d9eb; }
-    .masthead a { color: #c6d9eb; }
+    .masthead nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .masthead nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-radius: 6px; color: #c6d9eb; text-underline-offset: 4px; }
+    .masthead nav a:hover { background: #203d5b; }
+    .masthead nav a[aria-current="page"] { color: white; font-weight: 700; }
+    .repository-link svg { flex: none; fill: currentColor; }
     main { max-width: 1440px; margin: auto; padding: 38px max(3vw, 20px); }
     .eyebrow { text-transform: uppercase; letter-spacing: 1.7px; font-size: .73rem; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
     h1 { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.12; letter-spacing: -1.5px; margin: 0 0 18px; }
@@ -46,10 +51,11 @@
     .gateway { fill: #eaf2ff; stroke: #497bbb; stroke-width: 2; }
     .node-title { font-size: 17px; font-weight: 650; }
     .node-note { font-size: 13px; }
-    .route { fill: none; stroke: #c6d2e2; stroke-width: 3; }
+    .route { fill: none; stroke: #c6d2e2; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
     .route.active { stroke: var(--blue); stroke-width: 4; stroke-dasharray: 11 7; }
     .route.old { stroke: var(--amber); }
     .motion .route.active { animation: flow 1.2s linear infinite; }
+    .motion .route.active.reverse { animation-direction: reverse; }
     .motion.paused .route.active { animation-play-state: paused; }
     @keyframes flow { to { stroke-dashoffset: -36; } }
     .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .77rem; color: var(--muted); }
@@ -131,7 +137,33 @@
 </head>
 <body>
   <a class="skip" href="#guide">Skip to teaching guide</a>
-  <header class="masthead"><strong>CU / Architecture field guide</strong><span><a href="README.html">&larr; Maturity guide</a> &middot; Offline simulation &middot; No Azure connection</span></header>
+  <header class="masthead">
+    <div class="masthead-brand"><strong>CU / Architecture field guide</strong><span>Offline simulation &middot; No Azure connection</span></div>
+    <nav aria-label="Guide navigation">
+      <a href="README.html">Availability guide</a>
+      <a href="single-apim-failover.html" aria-current="page">APIM walkthrough</a>
+      <a class="repository-link" href="https://github.com/jfilcik/content-understanding-availability-patterns">
+        <!-- GitHub mark from Primer Octicons. MIT License, Copyright (c) 2026 GitHub Inc.
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE. -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>
+        GitHub repository
+      </a>
+    </nav>
+  </header>
   <main id="guide">
     <p class="eyebrow">Stage 3 / implementation deep dive</p>
     <h1>One gateway. Two CU regions.<br>No moving jobs.</h1>
@@ -166,12 +198,14 @@
           <title id="diagram-title">One APIM routes to two prepared CU regional stacks.</title>
           <desc id="diagram-description">The browser always calls APIM. New POSTs follow active-backend. Result GETs follow the region bound in their signed token.</desc>
           <defs>
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#1959b7" stroke-width="1.5"/></marker>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9 Z" fill="#c6d2e2"/></marker>
+            <marker id="arrow-active" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9 Z" fill="#1959b7"/></marker>
+            <marker id="arrow-old" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9 Z" fill="#875300"/></marker>
           </defs>
-          <path id="client-route" class="route" d="M155 154 H235" marker-end="url(#arrow)"/>
-          <path id="primary-route" class="route" d="M400 143 H435 V82 H485" marker-end="url(#arrow)"/>
-          <path id="secondary-route" class="route" d="M400 166 H435 V237 H485" marker-end="url(#arrow)"/>
-          <path id="management-route" class="route" d="M318 194 V265" marker-end="url(#arrow)"/>
+          <path id="client-route" class="route" d="M161 154 H229" marker-end="url(#arrow)"/>
+          <path id="primary-route" class="route" d="M406 138 H439 Q447 138 447 130 V90 Q447 82 455 82 H479" marker-end="url(#arrow)"/>
+          <path id="secondary-route" class="route" d="M406 166 H439 Q447 166 447 174 V229 Q447 237 455 237 H479" marker-end="url(#arrow)"/>
+          <path id="management-route" class="route" d="M318 200 V259" marker-end="url(#arrow)"/>
           <rect class="node" x="5" y="113" width="150" height="82" rx="12"/>
           <text class="node-title" x="23" y="146">Browser / client</text>
           <text class="node-note" x="23" y="171">POST + result GET</text>
@@ -195,7 +229,7 @@
           <text class="node-note" x="229" y="290">ARM: own named value</text>
           <text class="node-note" x="229" y="313">active-backend (persistent)</text>
         </svg>
-        <div class="legend"><span><i class="line" aria-hidden="true"></i>Highlighted request / control hop</span><span><i class="line old" aria-hidden="true"></i>Old operation pinned to primary</span></div>
+        <div class="legend"><span><i class="line" aria-hidden="true"></i>Highlighted request / response / control hop</span><span><i class="line old" aria-hidden="true"></i>Old operation pinned to primary</span></div>
         <p class="caption">Illustrated APIM-to-CU hops come from policy/configuration, not captured browser traffic. The browser sees only APIM.</p>
         <div class="state-grid">
           <div class="stat"><span>Runtime destination for new POSTs</span><strong id="active-backend"></strong></div>
@@ -316,7 +350,7 @@
       beforeLabel: "CU -> APIM (illustrated response header)", before: `HTTP 202 Accepted\nOperation-Location: ${result(primary)}`,
       afterLabel: "APIM -> client (synthetic response header)", after: `HTTP 202 Accepted\nOperation-Location: ${polling}`,
       note: "Keep the complete returned URL unchanged. This is the outbound response-header rewrite; the next GET performs inbound routing.",
-      routes: ["client", "primary"], observed: "Accepted in Sweden Central"
+      routes: ["client", "primary"], reverse: true, observed: "Accepted in Sweden Central"
     };
     function poll(age, status, old = false) {
       return {
@@ -421,6 +455,11 @@
         const path = $(route + "-route");
         path.classList.toggle("active", step.routes.includes(route));
         path.classList.toggle("old", Boolean(step.old && route === "primary"));
+        const reverse = Boolean(step.reverse && step.routes.includes(route));
+        path.classList.toggle("reverse", reverse);
+        const marker = step.old && route === "primary" ? "arrow-old" : step.routes.includes(route) ? "arrow-active" : "arrow";
+        path.setAttribute("marker-start", reverse ? `url(#${marker})` : "none");
+        path.setAttribute("marker-end", reverse ? "none" : `url(#${marker})`);
       });
       $("diagram-description").textContent = `${current.label}. ${step.title}. ${step.copy}`;
       $("step-list").replaceChildren(...current.steps.map((_, position) => {
