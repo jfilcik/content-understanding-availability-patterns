@@ -1,0 +1,46 @@
+name: Publish teaching guides
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.html
+      - single-apim-failover.html
+      - scripts/build_site.py
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teaching-guides-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && vars.PUBLISH_TEACHING_GUIDES == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Stage only offline guides
+        run: python3 scripts/build_site.py --repository "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload offline guides
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Publish site
+        id: deployment
+        uses: actions/deploy-pages@v4

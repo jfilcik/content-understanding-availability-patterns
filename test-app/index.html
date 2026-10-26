@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https:; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <title>CU Observatory · Single-gateway failover lab</title>
+  <link rel="stylesheet" href="./styles.css?v=8">
+  <script type="module" src="./app.js?v=8"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to workbench</a>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="CU Observatory home"><span class="brand-mark" aria-hidden="true">cu<span>↗</span></span><span>CU Observatory<small>CONTENT UNDERSTANDING / REQUEST LAB</small></span></a>
+    <span id="control-connection" class="local-pill">LOCAL CLIENT · DIRECT APIM REQUESTS</span>
+  </header>
+  <main id="main">
+    <section class="intro" aria-labelledby="page-title"><div><p class="eyebrow">SUBMIT ONCE. WATCH EVERY REQUEST.</p><h1 id="page-title">See where your analysis runs.</h1><p>Requests on the left. Real routing and resource controls on the right. Existing jobs always stay in their home region.</p></div></section>
+    <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+
+    <details class="panel key-setup" id="key-setup" open>
+      <summary><span class="step" aria-hidden="true">01</span><span><strong id="key-title">Before you start: add your APIM subscription key</strong><small id="key-summary">Required to submit analyses and poll results. Add the key before starting the lab.</small></span><span id="key-state" class="badge warning">Key not set</span></summary>
+      <div class="key-setup-body">
+        <div class="key-instructions"><h2>Get your serving key</h2><ol>
+          <li><a id="key-portal-link" href="https://portal.azure.com/#browse/Microsoft.ApiManagement%2Fservice" target="_blank" rel="noopener noreferrer">Open API Management in Azure portal</a> and select the serving APIM resource.</li>
+          <li>In its left menu, go to <strong>APIs → Subscriptions</strong>.</li>
+          <li>Find <strong>Content Understanding client</strong> (<code>foundry-content-understanding-sub</code>), reveal its <strong>Primary key</strong>, and copy it.</li>
+          <li>Paste the key here and choose <strong>Use key for this tab</strong>. This section collapses when the key is in memory; reopen it to change or clear the key.</li>
+        </ol><p class="hint">One APIM key authorizes submissions and polling for both CU backends. Your Azure CLI sign-in only authorizes the optional Azure controls; it does not replace this key.</p></div>
+        <form id="key-form" autocomplete="off"><label>Serving APIM subscription key<input id="subscription-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help" required></label><div class="toolbar"><button class="primary" type="submit">Use key for this tab</button><button id="clear-key" type="button" class="quiet">Clear key &amp; pause</button></div><small id="key-help">Memory only. Analysis goes directly to APIM; this key is never sent to the local Azure control helper. Reloading clears it and all operation history.</small></form>
+      </div>
+    </details>
+
+    <section class="panel composer" aria-labelledby="submit-title">
+      <div class="panel-heading"><h2 id="submit-title">Analyze a document</h2><span class="badge neutral">One POST · no automatic replay</span></div>
+      <form id="submit-form">
+        <div class="composer-options">
+          <label>Submission route<select id="target" disabled><option value="gateway">Single APIM · active CU backend</option></select></label>
+          <label>Analyzer<select id="analyzer"><option value="invoice">invoice</option><option value="receipt">receipt</option></select></label>
+          <fieldset class="mode-choice"><legend>Document source</legend><label><input type="radio" name="input-mode" value="url" checked> Document URL</label><label><input type="radio" name="input-mode" value="file"> Binary file</label></fieldset>
+        </div>
+        <div class="document-row">
+          <label id="document-url-label">HTTPS document URL<input id="document-url" type="url" placeholder="https://your-storage.example/invoice.pdf" autocomplete="off" spellcheck="false"></label>
+          <label id="document-file-label" hidden>Document file<input id="document-file" type="file"></label>
+          <button id="submit-button" class="primary" type="submit" disabled>Submit one analysis ↗</button>
+        </div>
+        <p id="route-help" class="route-help">Apply connection settings to select a route.</p>
+      </form>
+      <div class="failover-test">
+        <div class="toolbar">
+          <button id="test-failover" type="button" class="force-button" aria-describedby="test-failover-help test-failover-status" disabled>Test failover · 2s</button>
+          <button id="reset-primary" type="button" class="quiet" aria-describedby="reset-primary-help test-failover-status" disabled>Reset to primary</button>
+          <button id="restore-test-threshold" type="button" class="quiet" disabled>Restore test threshold</button>
+        </div>
+        <p id="test-failover-status" class="control-status" role="status">Connect the local Azure helper to enable this real, temporary APIM setting.</p>
+        <p id="test-failover-help" class="fine-print">Temporarily sets the single APIM's POST-to-result threshold to 2 seconds. Submit to primary and keep polling. An actual result GET beyond 2s requests sticky secondary selection if still Running / NotStarted or successfully completed. The signed clock starts when APIM receives the POST and includes polling delay. Management updates take time to activate; inspect real response headers for the runtime threshold and selection. Restoring the threshold does not reset the backend. No job is submitted, moved or replayed by this button. Keep the helper running until restoration finishes.</p>
+        <p id="reset-primary-help" class="fine-print">Reset to primary manually selects primary for new work; existing jobs stay pinned. It does not restore the test threshold. Restore that separately to avoid another failover from overdue primary polling, then wait for runtime propagation.</p>
+      </div>
+    </section>
+
+    <div class="lab-layout" id="lab-layout">
+      <div class="trace-column" id="trace-pane">
+        <section class="panel trace-panel" aria-labelledby="trace-title">
+          <div class="panel-heading"><div><p class="eyebrow">LIVE BROWSER REQUESTS</p><h2 id="trace-title">Network trace <span id="request-count" class="count">0</span></h2></div><button id="clear-trace" type="button" class="quiet">Clear trace</button></div>
+          <div class="trace-toolbar"><label>Show requests<select id="trace-filter"><option value="analysis">Analysis &amp; polling</option><option value="all">All requests</option><option value="control">Azure controls</option></select></label><span class="hint">Select a row to inspect it in either tab on the right.</span></div>
+          <div class="table-scroll trace-scroll"><table><caption class="sr-only">Actual requests made by this tab. Secrets are redacted. APIM backend hops are not browser-captured requests.</caption><thead><tr><th scope="col">Time</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col">Request / destination</th><th scope="col">Region</th><th scope="col">RTT</th></tr></thead><tbody id="trace-body"><tr><td colspan="6" class="empty">Submit an analysis to see its POST and every pinned result GET.</td></tr></tbody></table></div>
+          <p class="fine-print">Latest 250 requests in memory. Full paths and nonsensitive query values are shown; keys and signed tokens stay redacted. HTTP round-trip is not total analysis duration.</p>
+        </section>
+
+      </div>
+
+      <div id="pane-divider" class="pane-divider" role="separator" tabindex="0" aria-label="Resize network trace and request details" aria-orientation="vertical" aria-controls="trace-pane detail-pane" aria-valuemin="20" aria-valuemax="80" aria-valuenow="55" aria-valuetext="Network trace 55 percent, request details 45 percent"></div>
+
+      <aside class="detail-column" id="detail-pane" aria-label="Selected request details">
+        <div class="detail-tabs" role="tablist" aria-label="Request detail view">
+          <button id="routes-tab" type="button" role="tab" aria-controls="routes-panel" aria-selected="true">Routes &amp; resources</button>
+          <button id="inspector-tab" type="button" role="tab" aria-controls="inspector-panel" aria-selected="false" tabindex="-1">Request inspector</button>
+        </div>
+        <section class="panel request-inspector" id="inspector-panel" role="tabpanel" aria-labelledby="inspector-tab" tabindex="0" hidden>
+          <div class="panel-heading"><div><p class="eyebrow">REQUEST INSPECTOR</p><h2 id="request-title">Select a request</h2></div><span id="request-kind" class="badge neutral">Nothing selected</span></div>
+          <p id="request-empty" class="empty">Inspect a submission, each pinned result GET or Azure control action. No synthetic health requests are sent.</p>
+          <div id="request-content" hidden>
+            <p class="hint">Snapshot of the selected response. CU status is separate from HTTP status and later polling results.</p>
+            <dl class="response-highlights" aria-label="Selected response highlights">
+              <div><dt>CU operation ID</dt><dd id="highlight-operation-id">Not reported</dd></div>
+              <div><dt>CU status in this response</dt><dd><span id="highlight-cu-status" class="badge neutral">Not reported</span></dd></div>
+              <div class="highlight-location"><dt>Operation-Location returned in this response</dt><dd id="highlight-location">
+                <span id="operation-location-text">No Operation-Location header returned.</span>
+                <div id="token-view" class="learning-url" hidden>
+                  <code id="token-url-prefix"></code><button id="inspect-token" class="token-trigger" type="button" aria-expanded="false" aria-controls="token-popover" aria-describedby="token-help">[accepting backend unknown] hover for details</button><code id="token-url-suffix"></code>
+                  <div id="token-popover" class="token-popover" role="region" aria-labelledby="token-title" hidden>
+                    <div class="panel-heading"><h3 id="token-title">Signed routing token</h3><button id="close-token" class="quiet" type="button">Hide token</button></div>
+                    <p class="notice">Decoded locally, not decrypted. The browser cannot verify the HMAC signature; only APIM has the signing secret.</p>
+                    <p class="fine-print">Sensitive URL metadata. Shown only while this panel is open; never copied automatically.</p>
+                    <h4>Full signed token</h4><pre id="full-token" tabindex="0"></pre>
+                    <h4>Decoded claims · not verified by this browser</h4><dl id="decoded-token-fields" class="detail-fields"></dl><p id="token-decode-error" class="error-note"></p>
+                  </div>
+                </div>
+              </dd></div>
+            </dl>
+            <div id="polled-url" class="polled-url" hidden><h3>Polled URL · request sent unchanged</h3><div id="polled-url-value"><code id="polled-url-text"></code></div></div>
+            <p id="token-help" class="fine-print">Brackets show the observed accepting Foundry resource from matching deployment metadata, or its backend/region when the resource name is unavailable. Hover, focus or tap for the full token and decoded claims; the label is not part of the URL sent. Escape hides details. Normal trace and JSON views stay redacted.</p>
+            <section class="routing-evidence" aria-labelledby="routing-evidence-title">
+              <h3 id="routing-evidence-title">Which CU backend handled this request?</h3>
+              <dl id="routing-evidence-fields" class="detail-fields"></dl>
+              <p id="token-claim-note" class="hint"></p><p id="routing-evidence-note" class="hint"></p>
+            </section>
+            <label>Request URL <span class="optional">secrets redacted</span><textarea id="request-url" rows="3" readonly></textarea></label>
+            <dl id="request-fields" class="detail-fields"></dl>
+            <div class="inspector-columns"><details open><summary>Request headers &amp; body</summary><pre id="request-headers" tabindex="0"></pre><pre id="request-body" tabindex="0"></pre></details><details open><summary>Response headers &amp; body</summary><pre id="response-headers" tabindex="0"></pre><pre id="response-body" tabindex="0"></pre></details></div>
+          </div>
+        </section>
+
+        <div id="routes-panel" role="tabpanel" aria-labelledby="routes-tab" tabindex="0">
+        <section class="panel topology">
+          <div class="panel-heading"><div><p class="eyebrow">DEPLOYED TOPOLOGY</p><h2 id="resources-title">Routes &amp; resources</h2></div><button id="refresh-control" type="button">Refresh Azure state</button></div>
+          <p id="route-context" class="route-context" role="status">Select a network request to highlight its route. All deployed resources remain available below.</p>
+          <p id="control-summary" class="section-description">Expand a resource to inspect its settings. Azure controls require the local helper.</p>
+          <p id="control-error" class="error-note" role="status"></p>
+
+          <details class="resource-node client-resource" id="client-details">
+            <summary><span class="resource-icon" aria-hidden="true">01</span><span><strong>Your client</strong><small>Document → Analyze · regional result polling</small></span></summary>
+            <div class="resource-body">
+              <p class="hint">The serving key is managed in the setup section above the document composer.</p>
+              <div class="form-grid"><label>Analyzer IDs <span class="optional">deployment-defined</span><input form="config-form" id="analyzer-ids" value="invoice, receipt" required autocomplete="off"></label><label>API version<input form="config-form" id="api-version" value="2025-11-01" required autocomplete="off"></label></div>
+            </div>
+          </details>
+          <div class="route-connector"><span aria-hidden="true">↓</span> New analyses follow the selected submission route</div>
+
+          <details class="resource-node apim-resource" id="apim-details">
+            <summary><span class="resource-icon" aria-hidden="true">API</span><span><strong>API Management</strong><small id="gateway-host">One HTTPS gateway for both CU backends</small><small class="rewrite-summary">Rewrites result URLs · signed tokens pin GETs to the accepting CU</small></span><span id="gateway-observation-state" class="badge neutral">No analysis observed yet</span></summary>
+            <div class="resource-body">
+              <section class="rewrite-guide" aria-labelledby="rewrite-title">
+                <h3 id="rewrite-title">How APIM rewrites URLs</h3>
+                <p class="hint">New POSTs follow active-backend. Result GETs follow the accepting region in the signed URL, even after new work switches.</p>
+                <p id="rewrite-context" class="hint">Select an Analyze or result GET in the trace to see its URL mappings.</p>
+                <div id="rewrite-mappings"></div>
+              </section>
+              <dl id="gateway-fields" class="detail-fields"></dl>
+              <label>APIM HTTPS API base<input form="config-form" id="gateway-url" type="url" placeholder="https://your-apim.azure-api.net/contentunderstanding" required autocomplete="off" spellcheck="false"></label>
+              <div class="resource-controls" id="controls-gateway"></div>
+              <p class="hint">Active-backend selection affects new POSTs only. Signed polling metadata selects the accepting CU resource. This gateway remains a single-region dependency.</p>
+            </div>
+          </details>
+          <div class="route-connector"><span aria-hidden="true">↙ &nbsp; ↘</span> Two concrete backends · signed GET affinity · no pool</div>
+
+          <div id="cu-backends" class="region-branches">
+            <div class="region-branch">
+              <details class="resource-node cu-resource" id="cu-a-details"><summary><span class="resource-icon" aria-hidden="true">A</span><span><strong id="region-a-title">Primary CU</strong><small id="cu-a-host">Deployment-managed backend</small></span><span id="backend-a-state" class="badge neutral">Not observed</span></summary><div class="resource-body"><dl id="cu-a-fields" class="detail-fields"></dl>
+                <label>Display label<input form="config-form" id="region-a-label" value="Primary" maxlength="80" autocomplete="off"></label>
+                <label>Azure region<input form="config-form" id="region-a-region" value="swedencentral" required autocomplete="off"></label>
+                <p class="hint">Backend ID: primary-cu. Models/analyzers are deployment-managed. Backend hops are not browser-captured requests.</p></div></details>
+              <div id="affinity-a" class="affinity-note">No pinned operations yet.</div>
+            </div>
+            <div class="region-branch">
+              <details class="resource-node cu-resource" id="cu-b-details"><summary><span class="resource-icon" aria-hidden="true">B</span><span><strong id="region-b-title">Secondary CU</strong><small id="cu-b-host">Deployment-managed backend</small></span><span id="backend-b-state" class="badge neutral">Not observed</span></summary><div class="resource-body"><dl id="cu-b-fields" class="detail-fields"></dl>
+                <label>Display label<input form="config-form" id="region-b-label" value="Secondary" maxlength="80" autocomplete="off"></label>
+                <label>Azure region<input form="config-form" id="region-b-region" value="westeurope" required autocomplete="off"></label>
+                <p class="hint">Backend ID: secondary-cu. Failover is sticky until explicit reset. Existing primary jobs never move here.</p></div></details>
+              <div id="affinity-b" class="affinity-note">No pinned operations yet.</div>
+            </div>
+          </div>
+
+          <details id="connection-details" class="connection-tools" open><summary>Connection settings <span id="connection-state" class="badge neutral">Not configured</span></summary><form id="config-form"><div class="toolbar"><button class="primary" type="submit">Apply connections</button><label class="file-button">Import configuration JSON<input id="config-import" type="file" accept=".json,application/json"></label></div></form><p class="hint">Expand the client, APIM or CU cards to edit configuration, then apply. Configuration locks after the first operation.</p></details>
+          <p class="fine-print">No synthetic health probes. APIM observes signed POST-to-result elapsed time on real result GETs, including the successful result. Overdue pending work also qualifies, so stuck jobs need not finish first. Local Azure state is management configuration; runtime selection and thresholds are shown only when reported by real analysis responses. ARM acceptance does not prove gateway activation.</p>
+        </section>
+        <details class="panel timeline-panel"><summary>Routing timeline</summary><ol id="timeline" class="timeline"><li class="empty">Routing, status and control events appear here.</li></ol></details>
+        </div>
+      </aside>
+    </div>
+    <section class="panel jobs-panel" aria-labelledby="jobs-title">
+      <div class="panel-heading"><div><p class="eyebrow">REGIONAL AFFINITY</p><h2 id="jobs-title">Operations <span id="job-count" class="count">0</span></h2></div><button id="pause-all" type="button" class="quiet" disabled>Pause all monitoring</button></div>
+      <p id="job-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="section-description">New submissions can switch regions. Existing result GETs never do.</p>
+      <div class="table-scroll"><table><caption class="sr-only">Analysis operations, their pinned regions and POST-to-result duration. Gateway timing includes polling delay; client age is shown until gateway timing is available.</caption><thead><tr><th scope="col">Operation / analyzer</th><th scope="col">CU status</th><th scope="col">Pinned region</th><th scope="col">POST → result / client age</th><th scope="col">Polls</th><th scope="col">Last HTTP RTT</th><th scope="col">Monitoring</th><th scope="col">Actions</th></tr></thead><tbody id="jobs-body"><tr><td colspan="8" class="empty">No operations yet. Submit one document to trace its path.</td></tr></tbody></table></div>
+      <details class="resume-box"><summary>Resume a retained regional polling URL</summary><form id="resume-form"><label>Complete Operation-Location<input id="retained-url" type="password" autocomplete="off" spellcheck="false" required></label><p class="hint">Paste the complete signed URL unchanged. This sends GETs only, never another POST.</p><button type="submit">Monitor retained operation</button></form></details>
+      <p class="fine-print">Polling: minimum 3s, honors Retry-After, up to 120 polls / 30 minutes. Pausing does not cancel CU work. Retain the full signed polling URL privately before reloading.</p>
+    </section>
+    <footer>CU Observatory / Analysis and polling go directly to APIM · optional loopback Azure controls · no persistent browser storage</footer>
+  </main>
+
+  <dialog id="job-dialog" aria-labelledby="detail-title">
+    <div class="dialog-heading"><div><p class="eyebrow">OPERATION DETAIL</p><h2 id="detail-title">Operation</h2></div><button id="close-dialog" type="button" aria-label="Close operation details">Close ×</button></div>
+    <dl id="detail-fields" class="detail-fields"></dl>
+    <label>Regional polling URL <span class="optional">timing token redacted</span><textarea id="detail-url" rows="3" readonly></textarea></label>
+    <div class="toolbar"><button id="copy-url" type="button">Copy full polling URL (includes token)</button><span class="hint">Sensitive action. Keep the URL private and clear your clipboard afterward.</span></div>
+    <h3>Result / error payload</h3><p class="hint">Shown only here and in the selected request inspector. Known keys and tokens are redacted.</p><pre id="detail-result" tabindex="0"></pre>
+  </dialog>
+</body>
+</html>
