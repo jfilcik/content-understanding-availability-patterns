@@ -1,0 +1,264 @@
+<policies>
+  <inbound>
+    <cors allow-credentials="false" terminate-unmatched-request="true">
+      <allowed-origins>__CORS_ORIGINS__</allowed-origins>
+      <allowed-methods><method>GET</method><method>POST</method></allowed-methods>
+      <allowed-headers>
+        <header>Content-Type</header><header>Ocp-Apim-Subscription-Key</header>
+        <header>x-ms-client-request-id</header><header>x-ms-diagnostics</header>
+      </allowed-headers>
+      <expose-headers>
+        <header>Operation-Location</header><header>Retry-After</header>
+        <header>X-CU-Region</header><header>X-CU-Gateway</header><header>X-CU-Elapsed-Seconds</header>
+        <header>X-CU-Backend</header><header>X-CU-Active-Backend</header><header>X-CU-Switch-Status</header><header>X-CU-Trigger</header>
+        <header>X-CU-Latency-Threshold-Seconds</header><header>X-CU-Degradation-Reason</header>
+      </expose-headers>
+    </cors>
+    <base />
+    <set-variable name="requestBackend" value="{{active-backend}}" />
+    <set-variable name="allowedOrigin" value='@(new string[] { __CORS_ORIGIN_STRINGS__ }.Contains(context.Request.Headers.GetValueOrDefault("Origin", "")) ? context.Request.Headers.GetValueOrDefault("Origin", "") : "")' />
+    <choose>
+      <when condition='@(!(new string[] { "analyze", "analyze-binary", "get-result" }).Contains(context.Operation.Id))'>
+        <return-response>
+          <set-status code="405" reason="Operation not exposed by this gateway" />
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+          <set-body>{"error":{"code":"OperationNotSupported","message":"This gateway exposes analysis submission and regional result retrieval only. Manage analyzers with the deployment tooling."}}</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <choose>
+      <when condition='@(context.Request.Url.Query.GetValueOrDefault("api-version", "") != "{{cu-api-version}}")'>
+        <return-response>
+          <set-status code="400" reason="Unsupported API version" />
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+          <set-body>{"error":{"code":"UnsupportedApiVersion","message":"Use the API version configured for this deployment."}}</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <choose>
+      <when condition='@("{{polling-signing-key}}".Length &lt; 32 || (context.Request.Method == "POST" &amp;&amp; ("{{analyzers-ready}}" != "true" || !(new [] { "primary-cu", "secondary-cu" }).Contains("{{active-backend}}"))))'>
+        <return-response>
+          <set-status code="503" reason="Gateway not configured" />
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Retry-After" exists-action="override"><value>30</value></set-header>
+          <set-header name="X-CU-Region" exists-action="override"><value>{{cu-region}}</value></set-header>
+          <set-header name="X-CU-Gateway" exists-action="override"><value>{{gateway-name}}</value></set-header>
+          <set-header name="X-CU-Backend" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("requestBackend", "unknown"))</value></set-header>
+          <set-header name="X-CU-Switch-Status" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("switchStatus", "not-triggered"))</value></set-header>
+          <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+          <set-header name="Access-Control-Expose-Headers" exists-action="override"><value>Retry-After, X-CU-Region, X-CU-Gateway</value></set-header>
+          <set-body>{"error":{"code":"GatewayNotConfigured","message":"Deploy with the provided deployment scripts before submitting work."}}</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <choose>
+      <when condition='@(context.Request.Method == "GET")'>
+        <set-variable name="tokenPayload" value='@{
+          var token = context.Request.Url.Query.GetValueOrDefault("gateway-token", "");
+          if (token.Length &gt; 4096) { return ""; }
+          token = Uri.UnescapeDataString(token);
+          var parts = token.Split(&apos;.&apos;);
+          if (parts.Length != 2) { return ""; }
+          var expected = Convert.ToBase64String(new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes("{{polling-signing-key}}")).ComputeHash(Encoding.UTF8.GetBytes(parts[0])));
+          if (expected.Length != parts[1].Length) { return ""; }
+          var difference = 0;
+          for (var i = 0; i &lt; expected.Length; i++) { difference |= expected[i] ^ parts[1][i]; }
+          if (difference != 0) { return ""; }
+          return Encoding.UTF8.GetString(Convert.FromBase64String(parts[0]));
+        }' />
+        <set-variable name="tokenValid" value='@{
+          var text = (string)context.Variables["tokenPayload"];
+          if (String.IsNullOrEmpty(text)) { return false; }
+          var payload = Newtonsoft.Json.Linq.JObject.Parse(text);
+          var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+          return (string)payload["operation"] == context.Request.MatchedParameters["operationId"]
+            &amp;&amp; (new [] { "{{cu-region}}", "{{cu-secondary-region}}" }).Contains((string)payload["region"])
+            &amp;&amp; (string)payload["gateway"] == "{{gateway-name}}"
+            &amp;&amp; (string)payload["subscription"] == context.Subscription.Id
+            &amp;&amp; (string)payload["apiVersion"] == context.Request.Url.Query.GetValueOrDefault("api-version", "")
+            &amp;&amp; (long)payload["started"] &lt;= now
+            &amp;&amp; now &lt;= (long)payload["started"] + {{token-lifetime}}L * 1000
+            &amp;&amp; context.Request.OriginalUrl.Host.Equals(new Uri("{{gateway-url}}").Host, StringComparison.OrdinalIgnoreCase);
+        }' />
+        <choose>
+          <when condition='@(!(bool)context.Variables["tokenValid"])'>
+            <return-response>
+              <set-status code="400" reason="Invalid regional polling URL" />
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+              <set-body>{"error":{"code":"InvalidPollingUrl","message":"Use the complete, unmodified regional Operation-Location returned by Analyze, with the same APIM subscription."}}</set-body>
+            </return-response>
+          </when>
+        </choose>
+        <set-variable name="requestBackend" value='@((string)Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["tokenPayload"])["region"] == "{{cu-region}}" ? "primary-cu" : "secondary-cu")' />
+      </when>
+    </choose>
+    <set-variable name="cuEndpoint" value='@((string)context.Variables["requestBackend"] == "primary-cu" ? "{{cu-endpoint}}" : "{{cu-secondary-endpoint}}")' />
+    <set-variable name="cuRegion" value='@((string)context.Variables["requestBackend"] == "primary-cu" ? "{{cu-region}}" : "{{cu-secondary-region}}")' />
+    <set-query-parameter name="gateway-token" exists-action="delete" />
+    <set-query-parameter name="subscription-key" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-backend-service backend-id='@((string)context.Variables["requestBackend"])' />
+    <authentication-managed-identity resource="https://cognitiveservices.azure.com" />
+  </inbound>
+  <backend>
+    <forward-request timeout="60" buffer-response="true" />
+  </backend>
+  <outbound>
+    <base />
+    <choose>
+      <when condition='@(context.Request.Method == "GET")'>
+        <set-variable name="elapsedSeconds" value='@{
+          var payload = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["tokenPayload"]);
+          return (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)payload["started"]) / 1000.0;
+        }' />
+      </when>
+    </choose>
+    <set-header name="X-CU-Region" exists-action="override"><value>@((string)context.Variables["cuRegion"])</value></set-header>
+    <set-header name="X-CU-Gateway" exists-action="override"><value>{{gateway-name}}</value></set-header>
+    <set-header name="X-CU-Backend" exists-action="override"><value>@((string)context.Variables["requestBackend"])</value></set-header>
+    <set-header name="X-CU-Active-Backend" exists-action="override"><value>{{active-backend}}</value></set-header>
+    <set-header name="X-CU-Trigger" exists-action="override"><value>operation-duration</value></set-header>
+    <set-header name="X-CU-Latency-Threshold-Seconds" exists-action="override"><value>{{latency-threshold}}</value></set-header>
+    <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    <set-variable name="degradationReason" value='@{
+      if (context.Request.Method == "POST") {
+        return context.Response.StatusCode == 429 || context.Response.StatusCode &gt;= 500 ? "backend-error" : "";
+      }
+      if (context.Response.StatusCode != 200) { return ""; }
+      var body = context.Response.Body.As&lt;Newtonsoft.Json.Linq.JObject&gt;(preserveContent: true);
+      var status = ((string)body["status"] ?? "").ToLowerInvariant();
+      if ((double)context.Variables["elapsedSeconds"] &lt;= {{latency-threshold}}) { return ""; }
+      return status == "succeeded" ? "completion-latency"
+        : status == "running" || status == "notstarted" ? "pending-latency" : "";
+    }' />
+    <set-header name="X-CU-Degradation-Reason" exists-action="override"><value>@((string)context.Variables["degradationReason"])</value></set-header>
+    <choose>
+      <when condition='@(!String.IsNullOrEmpty((string)context.Variables["degradationReason"]))'>
+        <include-fragment fragment-id="cu-switch-backend" />
+      </when>
+    </choose>
+    <set-header name="X-CU-Switch-Status" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("switchStatus", "not-triggered"))</value></set-header>
+    <choose>
+      <when condition='@(context.Request.Method == "POST" &amp;&amp; context.Response.StatusCode == 202)'>
+        <set-variable name="operationUrlValid" value='@{
+          var value = context.Response.Headers.GetValueOrDefault("Operation-Location", "");
+          Uri url;
+          if (!value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || !Uri.TryCreate(new Uri((string)context.Variables["cuEndpoint"]), value, out url)) { return false; }
+          return url.Scheme == "https" &amp;&amp; url.Authority.Equals(new Uri((string)context.Variables["cuEndpoint"]).Authority, StringComparison.OrdinalIgnoreCase)
+            &amp;&amp; String.IsNullOrEmpty(url.UserInfo) &amp;&amp; String.IsNullOrEmpty(url.Fragment)
+            &amp;&amp; Regex.IsMatch(url.AbsolutePath, "^/contentunderstanding/analyzerResults/[a-zA-Z0-9_-]+$")
+            &amp;&amp; ("&amp;" + url.Query.TrimStart(&apos;?&apos;) + "&amp;").Contains("&amp;api-version={{cu-api-version}}&amp;")
+            &amp;&amp; !Regex.IsMatch(url.Query, "[?&amp;]gateway-token=")
+            &amp;&amp; !String.IsNullOrEmpty(context.Request.Url.Query.GetValueOrDefault("api-version", ""));
+        }' />
+        <choose>
+          <when condition='@(!(bool)context.Variables["operationUrlValid"])'>
+            <return-response>
+              <set-status code="502" reason="Unexpected CU operation location" />
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+              <set-body>{"error":{"code":"InvalidBackendOperationLocation","message":"CU accepted the request but returned an unexpected polling URL. Do not blindly resubmit; investigate the backend response."}}</set-body>
+            </return-response>
+          </when>
+        </choose>
+        <set-header name="Operation-Location" exists-action="override"><value>@{
+          var url = new Uri(context.Response.Headers.GetValueOrDefault("Operation-Location", ""));
+          var operation = url.AbsolutePath.Substring(url.AbsolutePath.LastIndexOf('/') + 1);
+          var payload = new Newtonsoft.Json.Linq.JObject(
+            new Newtonsoft.Json.Linq.JProperty("operation", operation),
+            new Newtonsoft.Json.Linq.JProperty("region", (string)context.Variables["cuRegion"]),
+            new Newtonsoft.Json.Linq.JProperty("gateway", "{{gateway-name}}"),
+            new Newtonsoft.Json.Linq.JProperty("subscription", context.Subscription.Id),
+            new Newtonsoft.Json.Linq.JProperty("apiVersion", context.Request.Url.Query.GetValueOrDefault("api-version", "")),
+            new Newtonsoft.Json.Linq.JProperty("analyzer", context.Request.MatchedParameters["analyzerId"]),
+            new Newtonsoft.Json.Linq.JProperty("started", new DateTimeOffset(context.Timestamp).ToUnixTimeMilliseconds())
+          ).ToString(Newtonsoft.Json.Formatting.None);
+          var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
+          var signature = Convert.ToBase64String(new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes("{{polling-signing-key}}")).ComputeHash(Encoding.UTF8.GetBytes(encoded)));
+          var apiPath = context.Api.Path.Trim(&apos;/&apos;);
+          return "{{gateway-url}}" + (String.IsNullOrEmpty(apiPath) ? "" : "/" + apiPath) + "/analyzerResults/" + operation
+            + (String.IsNullOrEmpty(url.Query) ? "?api-version=" + Uri.EscapeDataString(context.Request.Url.Query.GetValueOrDefault("api-version", "")) : url.Query)
+            + "&amp;gateway-token=" + Uri.EscapeDataString(encoded + "." + signature);
+        }</value></set-header>
+        <trace source="cu-routing" severity="information">
+          <message>submission-accepted</message>
+          <metadata name="region" value='@((string)context.Variables["cuRegion"])' />
+          <metadata name="analyzer" value='@(context.Request.MatchedParameters["analyzerId"])' />
+        </trace>
+      </when>
+      <when condition='@(context.Request.Method == "GET" &amp;&amp; context.Response.StatusCode == 200)'>
+        <set-variable name="operationStatus" value='@{
+          var body = context.Response.Body.As&lt;Newtonsoft.Json.Linq.JObject&gt;(preserveContent: true);
+          var status = ((string)body["status"] ?? "").ToLowerInvariant();
+          return new [] { "notstarted", "running", "succeeded", "failed", "canceled" }.Contains(status) ? status : "invalid";
+        }' />
+        <choose>
+          <when condition='@((string)context.Variables["operationStatus"] == "invalid")'>
+            <return-response>
+              <set-status code="502" reason="Unexpected CU result status" />
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+              <set-body>{"error":{"code":"InvalidBackendStatus","message":"CU returned an unsupported or missing operation status."}}</set-body>
+            </return-response>
+          </when>
+        </choose>
+        <set-header name="X-CU-Elapsed-Seconds" exists-action="override"><value>@(Newtonsoft.Json.JsonConvert.SerializeObject(Math.Round((double)context.Variables["elapsedSeconds"], 3)))</value></set-header>
+        <trace source="cu-observation" severity="information">
+          <message>operation-observed</message>
+          <metadata name="region" value='@((string)context.Variables["cuRegion"])' />
+          <metadata name="operation" value='@(context.Request.MatchedParameters["operationId"])' />
+          <metadata name="analyzer" value='@((string)Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["tokenPayload"])["analyzer"])' />
+          <metadata name="status" value='@((string)context.Variables["operationStatus"])' />
+          <metadata name="elapsedSeconds" value='@(Newtonsoft.Json.JsonConvert.SerializeObject((double)context.Variables["elapsedSeconds"]))' />
+        </trace>
+      </when>
+    </choose>
+  </outbound>
+  <on-error>
+    <base />
+    <set-variable name="allowedOrigin" value='@(new string[] { __CORS_ORIGIN_STRINGS__ }.Contains(context.Request.Headers.GetValueOrDefault("Origin", "")) ? context.Request.Headers.GetValueOrDefault("Origin", "") : "")' />
+    <choose>
+      <when condition='@(context.LastError.Reason == "SubscriptionKeyNotFound" || context.LastError.Reason == "SubscriptionKeyInvalid")'>
+        <return-response>
+          <set-status code="401" reason="Unauthorized" />
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+          <set-header name="Vary" exists-action="override"><value>Origin</value></set-header>
+          <set-body>{"error":{"code":"Unauthorized","message":"A valid APIM subscription key is required."}}</set-body>
+        </return-response>
+      </when>
+      <when condition='@(context.LastError.Reason == "OperationNotFound")'>
+        <return-response>
+          <set-status code="404" reason="Not Found" />
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@((string)context.Variables["allowedOrigin"])</value></set-header>
+          <set-header name="Vary" exists-action="override"><value>Origin</value></set-header>
+          <set-body>{"error":{"code":"OperationNotSupported","message":"This gateway exposes analysis submission and regional result retrieval only. Manage analyzers with the deployment tooling."}}</set-body>
+        </return-response>
+      </when>
+      <when condition='@(context.Request.Method == "POST" &amp;&amp; context.LastError.Source == "forward-request")'>
+        <set-variable name="degradationReason" value="backend-error" />
+        <include-fragment fragment-id="cu-switch-backend" />
+      </when>
+    </choose>
+    <return-response>
+      <set-status code="502" reason="Gateway or backend failure" />
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="X-CU-Region" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("cuRegion", "unknown"))</value></set-header>
+      <set-header name="X-CU-Gateway" exists-action="override"><value>{{gateway-name}}</value></set-header>
+      <set-header name="X-CU-Backend" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("requestBackend", "unknown"))</value></set-header>
+      <set-header name="X-CU-Active-Backend" exists-action="override"><value>{{active-backend}}</value></set-header>
+      <set-header name="X-CU-Latency-Threshold-Seconds" exists-action="override"><value>{{latency-threshold}}</value></set-header>
+      <set-header name="X-CU-Trigger" exists-action="override"><value>operation-duration</value></set-header>
+      <set-header name="X-CU-Degradation-Reason" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("degradationReason", ""))</value></set-header>
+      <set-header name="X-CU-Switch-Status" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("switchStatus", "not-triggered"))</value></set-header>
+      <set-header name="Access-Control-Allow-Origin" exists-action="override"><value>@(context.Variables.GetValueOrDefault&lt;string&gt;("allowedOrigin", ""))</value></set-header>
+      <set-header name="Access-Control-Expose-Headers" exists-action="override"><value>X-CU-Region, X-CU-Gateway, X-CU-Backend, X-CU-Active-Backend, X-CU-Switch-Status, X-CU-Latency-Threshold-Seconds, X-CU-Trigger, X-CU-Degradation-Reason</value></set-header>
+      <set-body>{"error":{"code":"GatewayFailure","message":"A gateway or backend error occurred. A timed-out submission may already have been accepted; do not automatically replay it."}}</set-body>
+    </return-response>
+  </on-error>
+</policies>

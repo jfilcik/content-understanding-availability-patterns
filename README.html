@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore four stages of Content Understanding availability, from regional processing and cross-region inference/OCR capacity to resilient ingress.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Four stages of availability | CU architecture guide</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; color: #172e47; background: #f1f5fa; line-height: 1.55; --blue: #1959b7; --green: #126550; --amber: #875300; --muted: #52647b; --border: #d4deeb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--blue); }
+    button, input { font: inherit; }
+    button { min-height: 44px; padding: 9px 16px; border-radius: 8px; border: 1px solid #a8bad1; color: #223e60; background: white; cursor: pointer; font-weight: 600; }
+    button:hover:not(:disabled) { background: #eaf2ff; }
+    button:disabled { opacity: .5; cursor: default; }
+    button[aria-pressed="true"], .primary-button { color: white; background: var(--blue); border-color: var(--blue); }
+    button[aria-pressed="true"]:hover, .primary-button:hover:not(:disabled) { background: #10458e; }
+    :focus-visible { outline: 3px solid #9e5300; outline-offset: 4px; }
+    .skip { position: absolute; top: -100px; left: 16px; background: white; padding: 12px; z-index: 10; }
+    .skip:focus { top: 10px; }
+    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .masthead span { color: #c6d9eb; }
+    .masthead a { color: #c6d9eb; }
+    main { max-width: 1440px; margin: auto; padding: 38px max(3vw, 20px); }
+    .eyebrow { text-transform: uppercase; letter-spacing: 1.7px; font-size: .73rem; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
+    h1 { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.12; letter-spacing: -1.5px; margin: 0 0 18px; }
+    h2 { font-size: 1.15rem; margin: 0 0 12px; }
+    h3 { font-size: 1rem; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    .intro { max-width: 850px; color: var(--muted); font-size: 1.06rem; }
+    .notice { margin: 24px 0; padding: 13px 18px; border-left: 4px solid var(--blue); background: #e5edfa; }
+    .scenario-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 12px; }
+    .scenario-bar button { flex: 1; min-width: 180px; }
+    .scenario-description { color: var(--muted); min-height: 3.1em; }
+    .workbench { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--border); border-radius: 14px; padding: 23px; background: white; min-width: 0; }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .pill { font-size: .74rem; font-weight: 650; border: 1px solid #b7d4cd; border-radius: 20px; background: #e9f5f0; color: #125342; padding: 5px 10px; }
+    .topology { width: 100%; height: auto; display: block; margin: 16px 0 5px; }
+    .topology text { font-family: "Segoe UI", system-ui, sans-serif; fill: #172e47; }
+    .node { fill: #f7f9fc; stroke: #b7c9dd; stroke-width: 1.5; }
+    .node.selected { fill: #e9f5f0; stroke: #16715c; stroke-width: 2.5; }
+    .node.degraded { fill: #fff4de; stroke: #966000; stroke-width: 2.5; }
+    .gateway { fill: #eaf2ff; stroke: #497bbb; stroke-width: 2; }
+    .node-title { font-size: 17px; font-weight: 650; }
+    .node-note { font-size: 13px; }
+    .route { fill: none; stroke: #c6d2e2; stroke-width: 3; }
+    .route.active { stroke: var(--blue); stroke-width: 4; stroke-dasharray: 11 7; }
+    .route.old { stroke: var(--amber); }
+    .motion .route.active { animation: flow 1.2s linear infinite; }
+    .motion.paused .route.active { animation-play-state: paused; }
+    @keyframes flow { to { stroke-dashoffset: -36; } }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .77rem; color: var(--muted); }
+    .line { display: inline-block; width: 23px; border-top: 3px solid var(--blue); vertical-align: middle; margin-right: 5px; }
+    .line.old { border-color: var(--amber); }
+    .state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+    .stat { border-radius: 8px; background: #f1f5fa; padding: 12px; }
+    .stat span { color: var(--muted); display: block; font-size: .75rem; }
+    .stat strong { font-size: .87rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; border-top: 1px solid var(--border); padding-top: 16px; }
+    .motion-option { font-size: .82rem; display: flex; align-items: center; gap: 7px; margin-top: 14px; }
+    input { width: 18px; height: 18px; accent-color: var(--blue); }
+    .caption, .small { color: var(--muted); font-size: .8rem; }
+    .step-count { font-weight: 700; color: var(--blue); font-size: .8rem; margin-bottom: 8px; }
+    #step-title { font-size: 1.3rem; }
+    #step-copy { min-height: 5em; }
+    .mapping { margin: 18px 0; }
+    .mapping-label { display: block; color: var(--muted); font-size: .73rem; font-weight: 700; margin: 9px 0 5px; text-transform: uppercase; letter-spacing: .6px; }
+    code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size: .81rem; }
+    code { overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f5fa; border: 1px solid var(--border); padding: 12px; border-radius: 7px; margin: 0; }
+    .callout { border-left: 3px solid #b37617; background: #fff6e2; padding: 12px 14px; font-size: .88rem; }
+    .step-list { display: flex; gap: 6px; margin: 16px 0; }
+    .step-marker { height: 5px; background: #dce4ee; flex: 1; border-radius: 3px; }
+    .step-marker.current { background: var(--blue); }
+    details { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 18px; }
+    summary { cursor: pointer; font-weight: 650; min-height: 44px; }
+    details p { font-size: .88rem; }
+    .lower { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .rules { padding-left: 19px; margin-bottom: 0; }
+    .rules li { margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); padding: 11px 8px; }
+    th { color: #304c6d; }
+    caption { text-align: left; color: var(--muted); font-size: .8rem; margin-bottom: 8px; }
+    footer { color: var(--muted); font-size: .8rem; margin-top: 26px; }
+    .maturity { margin: 26px 0; }
+    .stage-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 20px 0; }
+    .stage-buttons button { text-align: left; padding: 14px; }
+    .stage-buttons span { display: block; font-size: .72rem; font-weight: 400; margin-top: 5px; }
+    .maturity-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+    .maturity-layout > * { min-width: 0; }
+    .diagram-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: #fbfcfe; }
+    #maturity-diagram { display: block; width: 100%; min-width: 660px; height: auto; }
+    #maturity-diagram text { font-family: "Segoe UI", system-ui, sans-serif; fill: #172e47; }
+    .region-box { fill: #edf4ff; stroke: #9ab5d6; stroke-dasharray: 5 4; }
+    .pool-box { fill: #edf8f4; stroke: #9fc9b9; stroke-dasharray: 5 4; }
+    .zone-title { font-size: 13px; font-weight: 650; }
+    .maturity-node { fill: white; stroke: #9db5d2; stroke-width: 1.5; }
+    .maturity-node.highlight { fill: #e1f1ff; stroke: var(--blue); stroke-width: 2.5; }
+    .maturity-node.unavailable { fill: #fff0dc; stroke: #966000; stroke-width: 2.5; }
+    .maturity-edge { fill: none; stroke: #9fb3c9; stroke-width: 2; }
+    .maturity-edge.dns { stroke-dasharray: 5 5; }
+    .maturity-edge.highlight { stroke: var(--blue); stroke-width: 3.5; }
+    .packet { fill: var(--blue); offset-distance: 50%; }
+    .motion .maturity-playing .packet { animation: packet-flow 1.6s linear infinite; }
+    @keyframes packet-flow { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+    .maturity-info { background: #f1f5fa; padding: 18px; border-radius: 10px; }
+    .maturity-info h3:not(:first-child) { margin-top: 16px; }
+    .maturity-info p { font-size: .9rem; }
+    .flow-log { margin: 16px 0; padding-left: 24px; font-size: .85rem; }
+    .flow-log li { padding: 6px 8px; border-left: 3px solid transparent; }
+    .flow-log li[aria-current="step"] { border-left-color: var(--blue); background: #e5edfa; font-weight: 650; }
+    .stage-compare { margin-top: 26px; }
+    .stage-compare tr.current { background: #eaf2ff; }
+    .stage-compare td:first-child { font-weight: 650; }
+    .jump-link { display: inline-block; min-height: 44px; padding: 10px 14px; border: 1px solid #a8bad1; border-radius: 8px; background: white; font-weight: 650; text-decoration: none; }
+    .section-break { border-top: 1px solid var(--border); padding-top: 28px; margin-top: 34px; }
+    #demo { scroll-margin-top: 20px; }
+    @media (max-width: 1100px) { .maturity-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 680px) { .stage-buttons { grid-template-columns: 1fr; } .stage-buttons button { padding: 10px 14px; } .stage-buttons span { display: inline; margin-left: 8px; } .stage-compare table { min-width: 680px; } }
+    [hidden] { display: none !important; }
+    @media (max-width: 960px) { .workbench, .lower { grid-template-columns: 1fr; } .scenario-description { min-height: 0; } #step-copy { min-height: 0; } }
+    @media (max-width: 480px) { main { padding: 25px 14px; } .panel { padding: 16px; } .state-grid { grid-template-columns: 1fr; } .scenario-bar button { min-width: 100%; } }
+    @media (prefers-reduced-motion: reduce) { .motion .route.active, .motion .maturity-playing .packet { animation: none; } }
+    @media print { button, .controls, .motion-option { display: none; } .workbench, .lower { display: block; } .panel { break-inside: avoid; margin-bottom: 18px; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#guide">Skip to teaching guide</a>
+  <header class="masthead"><strong>CU / Architecture field guide</strong><span>Offline simulation &middot; No Azure connection</span></header>
+  <main id="guide">
+    <p class="eyebrow">Learn before you deploy</p>
+    <h1>Build availability,<br>one layer at a time.</h1>
+    <p class="intro">Start with Content Understanding (CU) in one region. Enable cross-region processing for model inference and OCR/layout to access more eligible GPU capacity, add regional backend failover, then remove the single gateway-region dependency. Explore four teaching stages and open the separate single-APIM demo page.</p>
+    <div class="notice"><strong>Offline teaching simulation.</strong> All requests, URLs, responses and timings are synthetic. This page makes no service calls. Stages are design choices, not an SLA ranking or a required deployment sequence; broader pools and endpoint failover solve different problems.</div>
+    <section class="panel maturity" aria-labelledby="maturity-title">
+      <div class="panel-head"><h2 id="maturity-title">Four stages of Content Understanding availability</h2><span class="pill" id="maturity-badge">1 / 4</span></div>
+      <p>Choose a stage, then follow a synthetic job through its architecture. Data Zone and Global are processing-scope options, not separate HA tiers.</p>
+      <div class="stage-buttons" role="group" aria-label="Availability maturity stage">
+        <button type="button" data-stage="0" aria-pressed="true">1. Regional baseline<span>One CU + regional processing</span></button>
+        <button type="button" data-stage="1" aria-pressed="false">2. Cross-region inference &amp; OCR<span>More eligible GPUs: Data Zone / Global</span></button>
+        <button type="button" data-stage="2" aria-pressed="false">3. Regional CU failover<span>One APIM, two CU resources</span></button>
+        <button type="button" data-stage="3" aria-pressed="false">4. Resilient ingress<span>DNS + two regional gateways</span></button>
+      </div>
+      <div class="maturity-layout">
+        <div>
+          <div class="diagram-scroll" tabindex="0" role="region" aria-label="Availability architecture diagram; scroll horizontally on narrow screens">
+            <svg id="maturity-diagram" viewBox="0 0 1040 450" role="img" aria-labelledby="maturity-svg-title maturity-svg-description">
+              <title id="maturity-svg-title">Selected availability architecture.</title>
+              <desc id="maturity-svg-description">Use the stage controls to show the client, CU orchestrator, OCR processing and Foundry model dependencies.</desc>
+              <g id="maturity-regions"></g>
+              <g id="maturity-edges"></g>
+              <g id="maturity-nodes"></g>
+              <g id="maturity-packets" aria-hidden="true"></g>
+            </svg>
+          </div>
+          <p class="caption">Schematic, not a network capture. Arrows show logical dependencies, not every internal service hop. On small screens, scroll the diagram horizontally; the text walkthrough gives the same information.</p>
+          <div class="controls" role="group" aria-label="Maturity diagram controls">
+            <button type="button" id="stage-previous">Previous stage</button>
+            <button type="button" id="stage-next">Next stage</button>
+            <button type="button" id="job-play" class="primary-button">Send a synthetic job</button>
+            <button type="button" id="job-next">Next job step</button>
+            <button type="button" id="region-outage" aria-pressed="false" hidden>Illustrate primary-region outage</button>
+          </div>
+          <label class="motion-option"><input id="maturity-motion" type="checkbox"> Animate flow markers (both diagrams)</label>
+          <p class="small">Job playback is a compressed explanation, not measured service timing. It stops at the final step. Reduced-motion users can advance one step at a time.</p>
+          <ol id="maturity-log" class="flow-log" aria-label="Synthetic job walkthrough"></ol>
+        </div>
+        <aside class="maturity-info" aria-labelledby="maturity-stage-title">
+          <p class="eyebrow" id="stage-scope"></p>
+          <h3 id="maturity-stage-title"></h3>
+          <p id="stage-description"></p>
+          <h3>What improves</h3><p id="stage-gain"></p>
+          <h3>What remains exposed</h3><p id="stage-limit"></p>
+          <p class="callout" id="stage-caveat"></p>
+          <p id="maturity-job-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <a id="stage-demo-link" class="jump-link" href="single-apim-failover.html">Explore stage 3: APIM demo page</a>
+        </aside>
+      </div>
+      <div class="stage-compare">
+        <h3 id="comparison-title">Compare the progression</h3>
+        <div class="table-wrap" tabindex="0" role="region" aria-labelledby="comparison-title"><table>
+          <caption>Additional scope can improve capacity flexibility, but it does not guarantee more GPUs per request, unlimited quota, uniform latency or recovery of accepted jobs.</caption>
+          <thead><tr><th scope="col">Stage</th><th scope="col">Architecture / change</th><th scope="col">Benefit</th><th scope="col">Remaining dependency</th></tr></thead>
+          <tbody>
+            <tr data-stage-row="0"><th scope="row">1. Regional baseline</th><td>Client calls one regional CU; CU uses OCR and Foundry models.</td><td>Simplest starting topology; narrow processing scope.</td><td>One CU endpoint and its processing dependencies.</td></tr>
+            <tr data-stage-row="1"><th scope="row">2. Cross-region inference &amp; OCR</th><td>Use supported cross-region processing for both Foundry model inference and CU OCR/layout: Data Zone (such as US or EU) or Global.</td><td>More eligible GPUs can back requests across the chosen zone or globe, rather than relying only on regional processing capacity.</td><td>Support and configuration differ by model/analyzer. CU ingress/orchestration remains regional; no guaranteed GPUs per request or endpoint failover.</td></tr>
+            <tr data-stage-row="2"><th scope="row">3. Regional CU failover</th><td>One APIM selects between two prepared CU stacks and signs result URLs.</td><td>New submissions can move to a different CU region. <a href="single-apim-failover.html">Open the detailed demo page</a>.</td><td>One gateway region remains; old operations stay with their accepting CU.</td></tr>
+            <tr data-stage-row="3"><th scope="row">4. Resilient ingress</th><td>Traffic Manager DNS selects between two regional APIM endpoints.</td><td>Remove the single gateway-region dependency for new connections.</td><td>DNS/probe delay, TLS, shared routing trust, regional job affinity and independent dependency readiness.</td></tr>
+          </tbody>
+        </table></div>
+        <details>
+          <summary>Processing scope and source notes</summary>
+          <p>Cross-region inference and OCR/layout belong to the same capacity-expansion stage: both can use more eligible GPU capacity beyond one region. Data Zone limits processing to an eligible zone, such as US or EU; Global permits processing across the globe within the service's supported locations. These are processing choices, not separate HA tiers or a promise that a single request runs on multiple GPUs.</p>
+          <p>The model and OCR controls still need to be configured for their supported operations. Foundry uses supported model deployment types; public CU guidance describes <code>processingLocation</code> for <code>prebuilt-read</code> and <code>prebuilt-layout</code> only. This page does not claim that every custom extraction analyzer can broaden its OCR scope, or that the stage-three invoice demo configures that option. Cross-region processing does not relocate the CU endpoint or its stored results.</p>
+          <p>Grounding: <a href="https://learn.microsoft.com/azure/foundry/foundry-models/concepts/deployment-types">Foundry model deployment types</a>, <a href="https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy">CU processing locations and data handling</a>, and <a href="https://learn.microsoft.com/azure/traffic-manager/traffic-manager-how-it-works">How Traffic Manager DNS works</a>. Check the current API, region, analyzer and model availability before deployment.</p>
+        </details>
+      </div>
+    </section>
+    <section class="panel" style="margin-top:22px" aria-labelledby="deep-dive-title">
+      <p class="eyebrow">Stage 3 / implementation deep dive</p>
+      <h2 id="deep-dive-title">See how this example works</h2>
+      <p>This repository deploys stage 3: one APIM gateway, two prepared CU regions, signed result URLs and no moving jobs. The other stages are architecture illustrations, not additional deployment modes. A separate page walks through normal operations, degraded primary and failover, the URL rewrites, failover triggers and invariants.</p>
+      <p><a class="jump-link" href="single-apim-failover.html">Open the single-APIM failover demo</a></p>
+      <h3>Try the real lab after the walkthrough</h3>
+      <ol class="rules">
+        <li>Follow <a href="README.md#deploy">Azure deployment setup</a>: sign in, choose a dedicated test resource group, copy the parameter file and select two supported regions/models before deploying.</li>
+        <li>Run validation and deployment with the provided scripts. They provision the same analyzers in both CU resources and preserve the gateway's signing/serving credentials on redeployment.</li>
+        <li>Start <a href="test-app/README.md#start">CU Observatory</a> locally, add the APIM serving key and submit a sample invoice. Inspect the real POST/result traffic, then use the bounded failover and recovery exercise.</li>
+      </ol>
+      <p class="small">The offline guides never submit work or change settings. The live lab creates potentially billable Azure usage. Sweden Central and West Europe are defaults; change them before deployment. GitHub's file viewer shows HTML source; download these two HTML files together or use the repository's opt-in GitHub Pages publishing workflow.</p>
+    </section>
+    <footer>Open this file directly in a browser. No installation, credentials, storage or services required. All example hosts use the reserved <code>.invalid</code> domain. <a href="README.md">Repository setup and usage guide</a>. <a href="README.md#local-validation">Run local teaching-guide and lab checks</a>.</footer>
+  </main>
+  <script>
+    "use strict";
+    const $ = id => document.getElementById(id);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    $("maturity-motion").checked = !reducedMotion.matches;
+    const maturityStages = [
+      {
+        title: "Start with one regional stack",
+        scope: "Regional baseline / illustrative starting point",
+        description: "The client submits to CU. The regional CU orchestrator uses OCR/layout processing and, for extraction, calls the configured Foundry models. Responses and result polling return through that CU endpoint.",
+        gain: "The fewest customer-managed routing components. Prepare an analyzer and model access/capacity before sending work.",
+        limit: "A single CU endpoint and its dependencies remain on the critical path. There is no customer-managed regional failover.",
+        caveat: "Regional processing is an illustrative starting configuration. Check the specific model deployment's documented processing boundary; a regional resource name alone does not establish every processing location."
+      },
+      {
+        title: "Cross-region model inference and OCR/layout",
+        scope: "More eligible GPU capacity / Data Zone or Global",
+        description: "Let both model inference and supported OCR/layout processing draw on capacity across regions: within a Data Zone, such as US or EU, or globally. The regional CU endpoint orchestrates the request while processing can reach beyond that region.",
+        gain: "More eligible GPUs can back your requests instead of relying only on regional processing capacity. This is one capacity-expansion step covering inference and OCR/layout, not two different maturity levels.",
+        limit: "This does not guarantee additional GPUs for each request, unlimited quota, uniform latency, or failover of the CU endpoint. Residency requirements and model/analyzer support still apply.",
+        caveat: "Configure supported Foundry deployment types for inference and the supported OCR processingLocation separately. Public OCR guidance covers prebuilt-read and prebuilt-layout; do not assume it applies to every extraction analyzer. OCR-only requests need not invoke an LLM."
+      },
+      {
+        title: "Fail over new work behind one APIM",
+        scope: "Stage-three demo / backend regional resilience",
+        description: "Deploy two prepared CU stacks. One APIM selects the active backend for new Analyze requests and rewrites accepted result URLs with signed regional affinity.",
+        gain: "CU degradation can switch new submissions to another region. The detailed demo page explains the latency triggers (pending or Succeeded results older than the threshold) and submission-error triggers.",
+        limit: "APIM is still a single regional ingress dependency. Existing operations stay pinned to their accepting CU and can be unavailable during its outage.",
+        caveat: "Neither an ARM-accepted update nor a readiness response proves Analyze activation. No automatic POST replay, job migration or failback. Pool-scope choices remain independent of this routing layer."
+      },
+      {
+        title: "Remove the single gateway-region dependency",
+        scope: "Conceptual extension / not implemented by the demo",
+        description: "Use Traffic Manager priority DNS routing to choose between two regional APIM endpoints, each fronting a prepared CU stack. After resolution, HTTPS connects directly to the selected APIM, not through Traffic Manager.",
+        gain: "New connections can reach a surviving regional gateway after health detection and DNS cache expiry. This addresses an ingress failure domain that stage three leaves exposed.",
+        limit: "It is not instant or regionless. Probe design, DNS caches, TLS, quota and regional dependencies still matter. In-flight CU jobs do not move.",
+        caveat: "Both gateways need a shared custom HTTPS hostname/certificate and deliberately coordinated token trust, subscription identity, policy and allowed-host validation. Either gateway must preserve the original CU affinity. The stage-three token binds one gateway; adding DNS alone does not make it portable."
+      }
+    ];
+    let maturityStage = 0;
+    let jobIndex = -1;
+    let maturityTimer = null;
+    let primaryOutage = false;
+    let maturityGraph;
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    function svgElement(name, attributes, text) {
+      const element = document.createElementNS(svgNamespace, name);
+      Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+    function createMaturityGraph(stage) {
+      const graph = { nodes: [], edges: [], regions: [], steps: [] };
+      const node = (id, x, y, width, title, ...lines) => graph.nodes.push({ id, x, y, width, title, lines });
+      const edge = (id, path, dns = false) => graph.edges.push({ id, path, dns });
+      const step = (text, edges, nodes) => graph.steps.push({ text, edges, nodes });
+      const region = (x, y, width, height, title, pool = false) => graph.regions.push({ x, y, width, height, title, pool });
+      if (stage < 2) {
+        region(210, 25, stage === 0 ? 810 : 290, 400, "Region A: CU ingress + orchestration");
+        if (stage > 0) {
+          region(540, 35, 475, 160, "Cross-region OCR/layout: Data Zone OR Global", true);
+          region(540, 245, 475, 170, "Cross-region inference: Data Zone OR Global", true);
+        }
+        node("client", 15, 190, 160, "Client", "Analyze + result GET");
+        node("cu", 275, 190, 170, "Regional CU", "Orchestrate / retain results");
+        node("ocr", 645, 80, 240, stage === 1 ? "Cross-region OCR/layout" : "Regional OCR/layout", stage === 1 ? "Eligible GPUs across zone / globe" : "Read / layout processing");
+        node("model", 645, 290, 240, stage === 0 ? "Foundry models" : "Cross-region inference", stage === 0 ? "Regional processing baseline" : "Eligible GPUs across zone / globe");
+        edge("submit", "M175 220 H275");
+        edge("parse", "M445 210 H525 V110 H645");
+        edge("parsed", "M645 135 H550 V235 H445");
+        edge("infer", "M445 245 H525 V320 H645");
+        edge("inferred", "M645 345 H500 V260 H445");
+        edge("result", "M275 250 H175");
+        step("1. Client submits a new Analyze request directly to the regional CU endpoint.", ["submit"], ["client", "cu"]);
+        step(stage === 1 ? "2. Supported OCR/layout processing can reach eligible GPUs across a Data Zone (such as US or EU) or globally. The public processingLocation control covers prebuilt-read / prebuilt-layout." : "2. CU invokes OCR/layout processing within the illustrated regional scope.", ["parse", "parsed"], ["cu", "ocr"]);
+        step(stage === 1 ? "3. For extraction, model inference can also reach eligible GPUs across a Data Zone or globally through a supported Foundry deployment. This is the same cross-region capacity strategy; OCR-only requests skip this LLM hop." : "3. For extraction, CU calls the configured Foundry models. Model capacity is a separate dependency.", ["infer", "inferred"], ["cu", "model"]);
+        step("4. The client polls and retrieves results from the originating CU endpoint. A broader backend pool has not moved that endpoint.", ["result"], ["cu", "client"]);
+      } else {
+        const dual = stage === 3;
+        region(dual ? 220 : 465, 25, dual ? 800 : 555, 195, "Region A: prepared CU + model access");
+        region(dual ? 220 : 465, 240, dual ? 800 : 555, 195, "Region B: prepared CU + model access");
+        node("client", 15, 190, 160, "Client", dual ? "Shared HTTPS hostname" : "One APIM hostname");
+        if (dual) {
+          node("dns", 15, 40, 180, "Traffic Manager", "DNS selection, not proxy");
+          node("gateway-a", 255, 85, 155, "APIM A", primaryOutage ? "Unavailable (illustrated)" : "Rewrite + validate");
+          node("gateway-b", 255, 300, 155, "APIM B", "Rewrite + validate");
+          edge("dns-query", "M95 190 V110", true);
+          edge("dns-a", "M195 75 H230 V95 H255", true);
+          edge("dns-b", "M195 90 H215 V310 H255", true);
+          edge("submit-a", "M175 210 H200 V120 H255");
+          edge("submit-b", "M175 240 H200 V335 H255");
+          edge("gateway-a-cu", "M410 115 H510");
+          edge("gateway-b-cu", "M410 330 H510");
+          edge("accepted-a", "M510 140 H410");
+          edge("accepted-b", "M510 355 H410");
+          edge("return-a", "M255 140 H190 V225 H175");
+          edge("return-b", "M255 355 H190 V250 H175");
+        } else {
+          node("gateway", 255, 190, 155, "Single APIM", "One gateway region");
+          edge("submit-a", "M175 220 H255");
+          edge("gateway-a-cu", "M410 210 H455 V120 H510");
+          edge("gateway-b-cu", "M410 240 H455 V335 H510");
+          edge("accepted-a", "M510 140 H440 V225 H410");
+          edge("return-a", "M255 245 H175");
+        }
+        node("cu-a", 510, 85, 170, "CU A", "Sweden Central");
+        node("cu-b", 510, 300, 170, "CU B", "West Europe");
+        node("ocr-a", 775, 55, 220, "OCR / layout A", "Scope chosen independently");
+        node("model-a", 775, 140, 220, "Foundry models A", "Prepared access + quota");
+        node("ocr-b", 775, 270, 220, "OCR / layout B", "Scope chosen independently");
+        node("model-b", 775, 355, 220, "Foundry models B", "Prepared access + quota");
+        edge("parse-a", "M680 105 H730 V80 H775");
+        edge("infer-a", "M680 130 H730 V165 H775");
+        edge("parse-b", "M680 320 H730 V295 H775");
+        edge("infer-b", "M680 345 H730 V380 H775");
+        const selected = dual && primaryOutage ? "b" : "a";
+        if (dual) step(primaryOutage ? "1. Illustrative outage: after probe failure detection and DNS cache expiry, a fresh lookup selects APIM B. Existing cached connections may still fail." : "1. Traffic Manager answers DNS with the selected regional endpoint. It never receives the Analyze HTTP request.", ["dns-query", `dns-${selected}`], ["client", "dns", `gateway-${selected}`]);
+        step(`${dual ? 2 : 1}. Client sends HTTPS directly to ${dual ? `APIM ${selected.toUpperCase()}` : "the single APIM"}. Forward the new POST once to the selected CU backend.`, [`submit-${dual ? selected : "a"}`, `gateway-${selected}-cu`], ["client", dual ? `gateway-${selected}` : "gateway", `cu-${selected}`]);
+        step(`${dual ? 3 : 2}. CU ${selected.toUpperCase()} uses its prepared OCR/model dependencies. Each pool's processing scope and quota remain separate design choices.`, [`parse-${selected}`, `infer-${selected}`], [`cu-${selected}`, `ocr-${selected}`, `model-${selected}`]);
+        step(`${dual ? 4 : 3}. On acceptance, APIM rewrites Operation-Location to a signed gateway result URL. Result GETs must retain this job's original CU affinity.`, [`accepted-${selected}`, `return-${selected}`], [dual ? `gateway-${selected}` : "gateway", `cu-${selected}`, "client"]);
+        step(dual ? "5. New-work ingress can survive a gateway-region outage; accepted jobs still do not migrate. Cross-gateway validation and routing require additional implementation, not just DNS." : "4. If a qualifying degradation requests secondary and runtime activation completes, only NEW POSTs use CU B. Old CU A result GETs remain pinned to A.", dual ? [] : ["gateway-b-cu"], dual ? ["gateway-a", "gateway-b"] : ["gateway", "cu-a", "cu-b"]);
+      }
+      return graph;
+    }
+    function stopMaturityPlayback() {
+      if (maturityTimer !== null) window.clearInterval(maturityTimer);
+      maturityTimer = null;
+      $("job-play").textContent = jobIndex >= 0 && jobIndex < maturityGraph.steps.length - 1 ? "Resume synthetic job" : "Send a synthetic job";
+      $("maturity-diagram").classList.remove("maturity-playing");
+    }
+    function drawMaturityDiagram() {
+      const currentStep = maturityGraph.steps[jobIndex];
+      $("maturity-regions").replaceChildren(...maturityGraph.regions.map(region => {
+        const group = svgElement("g", {});
+        group.append(svgElement("rect", { x: region.x, y: region.y, width: region.width, height: region.height, rx: 12, class: region.pool ? "pool-box" : "region-box" }),
+          svgElement("text", { x: region.x + 14, y: region.y + 23, class: "zone-title" }, region.title));
+        return group;
+      }));
+      $("maturity-edges").replaceChildren(...maturityGraph.edges.map(edge => svgElement("path", {
+        d: edge.path, "data-edge": edge.id,
+        class: "maturity-edge" + (edge.dns ? " dns" : "") + (currentStep?.edges.includes(edge.id) ? " highlight" : ""),
+        "marker-end": "url(#arrow)"
+      })));
+      $("maturity-nodes").replaceChildren(...maturityGraph.nodes.map(node => {
+        const group = svgElement("g", { "data-node": node.id });
+        const unavailable = maturityStage === 3 && primaryOutage && (node.id === "gateway-a" || node.id.endsWith("-a"));
+        group.append(svgElement("rect", { x: node.x, y: node.y, width: node.width, height: 66, rx: 9,
+          class: "maturity-node" + (currentStep?.nodes.includes(node.id) ? " highlight" : "") + (unavailable ? " unavailable" : "") }),
+          svgElement("text", { x: node.x + 11, y: node.y + 25, "font-size": 15, "font-weight": 650 }, node.title));
+        node.lines.forEach((line, index) => group.append(svgElement("text", { x: node.x + 11, y: node.y + 47 + index * 15, "font-size": 12 }, line)));
+        return group;
+      }));
+      $("maturity-packets").replaceChildren(...(currentStep ? maturityGraph.edges.filter(edge => currentStep.edges.includes(edge.id)).map(edge => {
+        const packet = svgElement("circle", { r: 5, class: "packet" });
+        packet.style.offsetPath = `path("${edge.path}")`;
+        return packet;
+      }) : []));
+      $("maturity-log").replaceChildren(...maturityGraph.steps.map((step, index) => {
+        const item = document.createElement("li");
+        item.textContent = step.text.replace(/^\d+\.\s/, "");
+        if (index === jobIndex) item.setAttribute("aria-current", "step");
+        return item;
+      }));
+      $("job-next").disabled = jobIndex === maturityGraph.steps.length - 1;
+      $("maturity-job-status").textContent = currentStep ? currentStep.text : "Ready. Send a synthetic job or use Next job step to follow the flow.";
+      $("maturity-svg-description").textContent = `${maturityStages[maturityStage].title}. ${maturityStages[maturityStage].description} ${currentStep?.text || ""}`;
+    }
+    function selectMaturityStage(stage) {
+      if (maturityGraph) stopMaturityPlayback();
+      maturityStage = stage;
+      primaryOutage = false;
+      jobIndex = -1;
+      maturityGraph = createMaturityGraph(stage);
+      const current = maturityStages[stage];
+      $("maturity-badge").textContent = `${stage + 1} / ${maturityStages.length}`;
+      $("maturity-stage-title").textContent = current.title;
+      $("maturity-svg-title").textContent = current.title;
+      $("stage-scope").textContent = current.scope;
+      $("stage-description").textContent = current.description;
+      $("stage-gain").textContent = current.gain;
+      $("stage-limit").textContent = current.limit;
+      $("stage-caveat").textContent = current.caveat;
+      $("stage-previous").disabled = stage === 0;
+      $("stage-next").disabled = stage === maturityStages.length - 1;
+      $("region-outage").hidden = stage !== 3;
+      $("region-outage").setAttribute("aria-pressed", "false");
+      $("region-outage").textContent = "Illustrate primary-region outage";
+      $("stage-demo-link").textContent = stage === 2 ? "Open this stage's APIM demo page" : "Explore stage 3: APIM demo page";
+      document.querySelectorAll("[data-stage]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.stage) === stage)));
+      document.querySelectorAll("[data-stage-row]").forEach(row => row.classList.toggle("current", Number(row.dataset.stageRow) === stage));
+      stopMaturityPlayback();
+      drawMaturityDiagram();
+    }
+    document.querySelectorAll("[data-stage]").forEach(button => button.addEventListener("click", () => selectMaturityStage(Number(button.dataset.stage))));
+    $("stage-previous").addEventListener("click", () => { if (maturityStage > 0) selectMaturityStage(maturityStage - 1); });
+    $("stage-next").addEventListener("click", () => { if (maturityStage < maturityStages.length - 1) selectMaturityStage(maturityStage + 1); });
+    $("job-next").addEventListener("click", () => {
+      stopMaturityPlayback();
+      if (jobIndex < maturityGraph.steps.length - 1) jobIndex++;
+      drawMaturityDiagram();
+      stopMaturityPlayback();
+    });
+    $("job-play").addEventListener("click", () => {
+      if (maturityTimer !== null) { stopMaturityPlayback(); return; }
+      if (jobIndex === maturityGraph.steps.length - 1) jobIndex = -1;
+      if (jobIndex < 0) jobIndex = 0;
+      drawMaturityDiagram();
+      $("job-play").textContent = "Pause synthetic job";
+      $("maturity-diagram").classList.add("maturity-playing");
+      maturityTimer = window.setInterval(() => {
+        jobIndex++;
+        drawMaturityDiagram();
+        if (jobIndex === maturityGraph.steps.length - 1) stopMaturityPlayback();
+      }, 2200);
+    });
+    $("region-outage").addEventListener("click", () => {
+      stopMaturityPlayback();
+      primaryOutage = !primaryOutage;
+      jobIndex = -1;
+      $("region-outage").setAttribute("aria-pressed", String(primaryOutage));
+      $("region-outage").textContent = primaryOutage ? "Restore illustrated primary region" : "Illustrate primary-region outage";
+      maturityGraph = createMaturityGraph(maturityStage);
+      drawMaturityDiagram();
+      stopMaturityPlayback();
+    });
+    $("maturity-motion").addEventListener("change", () => document.body.classList.toggle("motion", $("maturity-motion").checked));
+    reducedMotion.addEventListener("change", event => {
+      $("maturity-motion").checked = !event.matches;
+      document.body.classList.toggle("motion", !event.matches);
+      if (event.matches) stopMaturityPlayback();
+    });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) stopMaturityPlayback(); });
+    document.body.classList.toggle("motion", $("maturity-motion").checked);
+    selectMaturityStage(0);
+  </script>
+</body>
+</html>

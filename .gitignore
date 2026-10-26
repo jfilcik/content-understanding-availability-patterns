@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.python_packages/
+.azure/
+artifacts/
+_site/
+main.bicepparam
+*.local.bicepparam
+node_modules/
+test-app/test-results/
+test-app/playwright-report/
+tests/policies/bin/
+tests/policies/obj/
+.impeccable/hook.cache.json

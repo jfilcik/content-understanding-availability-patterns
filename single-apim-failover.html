@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Offline walkthrough of single-APIM Content Understanding regional failover: request rewrites, signed result URLs, triggers and limits.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Single-APIM CU failover demo | CU architecture guide</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; color: #172e47; background: #f1f5fa; line-height: 1.55; --blue: #1959b7; --green: #126550; --amber: #875300; --muted: #52647b; --border: #d4deeb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--blue); }
+    button, input { font: inherit; }
+    button { min-height: 44px; padding: 9px 16px; border-radius: 8px; border: 1px solid #a8bad1; color: #223e60; background: white; cursor: pointer; font-weight: 600; }
+    button:hover:not(:disabled) { background: #eaf2ff; }
+    button:disabled { opacity: .5; cursor: default; }
+    button[aria-pressed="true"], .primary-button { color: white; background: var(--blue); border-color: var(--blue); }
+    button[aria-pressed="true"]:hover, .primary-button:hover:not(:disabled) { background: #10458e; }
+    :focus-visible { outline: 3px solid #9e5300; outline-offset: 4px; }
+    .skip { position: absolute; top: -100px; left: 16px; background: white; padding: 12px; z-index: 10; }
+    .skip:focus { top: 10px; }
+    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .masthead span { color: #c6d9eb; }
+    .masthead a { color: #c6d9eb; }
+    main { max-width: 1440px; margin: auto; padding: 38px max(3vw, 20px); }
+    .eyebrow { text-transform: uppercase; letter-spacing: 1.7px; font-size: .73rem; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
+    h1 { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.12; letter-spacing: -1.5px; margin: 0 0 18px; }
+    h2 { font-size: 1.15rem; margin: 0 0 12px; }
+    h3 { font-size: 1rem; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    .intro { max-width: 850px; color: var(--muted); font-size: 1.06rem; }
+    .notice { margin: 24px 0; padding: 13px 18px; border-left: 4px solid var(--blue); background: #e5edfa; }
+    .scenario-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 12px; }
+    .scenario-bar button { flex: 1; min-width: 180px; }
+    .scenario-description { color: var(--muted); min-height: 3.1em; }
+    .workbench { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--border); border-radius: 14px; padding: 23px; background: white; min-width: 0; }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .pill { font-size: .74rem; font-weight: 650; border: 1px solid #b7d4cd; border-radius: 20px; background: #e9f5f0; color: #125342; padding: 5px 10px; }
+    .topology { width: 100%; height: auto; display: block; margin: 16px 0 5px; }
+    .topology text { font-family: "Segoe UI", system-ui, sans-serif; fill: #172e47; }
+    .node { fill: #f7f9fc; stroke: #b7c9dd; stroke-width: 1.5; }
+    .node.selected { fill: #e9f5f0; stroke: #16715c; stroke-width: 2.5; }
+    .node.degraded { fill: #fff4de; stroke: #966000; stroke-width: 2.5; }
+    .gateway { fill: #eaf2ff; stroke: #497bbb; stroke-width: 2; }
+    .node-title { font-size: 17px; font-weight: 650; }
+    .node-note { font-size: 13px; }
+    .route { fill: none; stroke: #c6d2e2; stroke-width: 3; }
+    .route.active { stroke: var(--blue); stroke-width: 4; stroke-dasharray: 11 7; }
+    .route.old { stroke: var(--amber); }
+    .motion .route.active { animation: flow 1.2s linear infinite; }
+    .motion.paused .route.active { animation-play-state: paused; }
+    @keyframes flow { to { stroke-dashoffset: -36; } }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .77rem; color: var(--muted); }
+    .line { display: inline-block; width: 23px; border-top: 3px solid var(--blue); vertical-align: middle; margin-right: 5px; }
+    .line.old { border-color: var(--amber); }
+    .state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+    .stat { border-radius: 8px; background: #f1f5fa; padding: 12px; }
+    .stat span { color: var(--muted); display: block; font-size: .75rem; }
+    .stat strong { font-size: .87rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; border-top: 1px solid var(--border); padding-top: 16px; }
+    .motion-option { font-size: .82rem; display: flex; align-items: center; gap: 7px; margin-top: 14px; }
+    input { width: 18px; height: 18px; accent-color: var(--blue); }
+    .caption, .small { color: var(--muted); font-size: .8rem; }
+    .step-count { font-weight: 700; color: var(--blue); font-size: .8rem; margin-bottom: 8px; }
+    #step-title { font-size: 1.3rem; }
+    #step-copy { min-height: 5em; }
+    .mapping { margin: 18px 0; }
+    .mapping-label { display: block; color: var(--muted); font-size: .73rem; font-weight: 700; margin: 9px 0 5px; text-transform: uppercase; letter-spacing: .6px; }
+    code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size: .81rem; }
+    code { overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f5fa; border: 1px solid var(--border); padding: 12px; border-radius: 7px; margin: 0; }
+    .callout { border-left: 3px solid #b37617; background: #fff6e2; padding: 12px 14px; font-size: .88rem; }
+    .step-list { display: flex; gap: 6px; margin: 16px 0; }
+    .step-marker { height: 5px; background: #dce4ee; flex: 1; border-radius: 3px; }
+    .step-marker.current { background: var(--blue); }
+    details { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 18px; }
+    summary { cursor: pointer; font-weight: 650; min-height: 44px; }
+    details p { font-size: .88rem; }
+    .lower { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .rules { padding-left: 19px; margin-bottom: 0; }
+    .rules li { margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); padding: 11px 8px; }
+    th { color: #304c6d; }
+    caption { text-align: left; color: var(--muted); font-size: .8rem; margin-bottom: 8px; }
+    footer { color: var(--muted); font-size: .8rem; margin-top: 26px; }
+    .maturity { margin: 26px 0; }
+    .stage-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 20px 0; }
+    .stage-buttons button { text-align: left; padding: 14px; }
+    .stage-buttons span { display: block; font-size: .72rem; font-weight: 400; margin-top: 5px; }
+    .maturity-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+    .maturity-layout > * { min-width: 0; }
+    .diagram-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: #fbfcfe; }
+    #maturity-diagram { display: block; width: 100%; min-width: 660px; height: auto; }
+    #maturity-diagram text { font-family: "Segoe UI", system-ui, sans-serif; fill: #172e47; }
+    .region-box { fill: #edf4ff; stroke: #9ab5d6; stroke-dasharray: 5 4; }
+    .pool-box { fill: #edf8f4; stroke: #9fc9b9; stroke-dasharray: 5 4; }
+    .zone-title { font-size: 13px; font-weight: 650; }
+    .maturity-node { fill: white; stroke: #9db5d2; stroke-width: 1.5; }
+    .maturity-node.highlight { fill: #e1f1ff; stroke: var(--blue); stroke-width: 2.5; }
+    .maturity-node.unavailable { fill: #fff0dc; stroke: #966000; stroke-width: 2.5; }
+    .maturity-edge { fill: none; stroke: #9fb3c9; stroke-width: 2; }
+    .maturity-edge.dns { stroke-dasharray: 5 5; }
+    .maturity-edge.highlight { stroke: var(--blue); stroke-width: 3.5; }
+    .packet { fill: var(--blue); offset-distance: 50%; }
+    .motion .maturity-playing .packet { animation: packet-flow 1.6s linear infinite; }
+    @keyframes packet-flow { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+    .maturity-info { background: #f1f5fa; padding: 18px; border-radius: 10px; }
+    .maturity-info h3:not(:first-child) { margin-top: 16px; }
+    .maturity-info p { font-size: .9rem; }
+    .flow-log { margin: 16px 0; padding-left: 24px; font-size: .85rem; }
+    .flow-log li { padding: 6px 8px; border-left: 3px solid transparent; }
+    .flow-log li[aria-current="step"] { border-left-color: var(--blue); background: #e5edfa; font-weight: 650; }
+    .stage-compare { margin-top: 26px; }
+    .stage-compare tr.current { background: #eaf2ff; }
+    .stage-compare td:first-child { font-weight: 650; }
+    .jump-link { display: inline-block; min-height: 44px; padding: 10px 14px; border: 1px solid #a8bad1; border-radius: 8px; background: white; font-weight: 650; text-decoration: none; }
+    .section-break { border-top: 1px solid var(--border); padding-top: 28px; margin-top: 34px; }
+    #demo { scroll-margin-top: 20px; }
+    @media (max-width: 1100px) { .maturity-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 680px) { .stage-buttons { grid-template-columns: 1fr; } .stage-buttons button { padding: 10px 14px; } .stage-buttons span { display: inline; margin-left: 8px; } .stage-compare table { min-width: 680px; } }
+    [hidden] { display: none !important; }
+    @media (max-width: 960px) { .workbench, .lower { grid-template-columns: 1fr; } .scenario-description { min-height: 0; } #step-copy { min-height: 0; } }
+    @media (max-width: 480px) { main { padding: 25px 14px; } .panel { padding: 16px; } .state-grid { grid-template-columns: 1fr; } .scenario-bar button { min-width: 100%; } }
+    @media (prefers-reduced-motion: reduce) { .motion .route.active, .motion .maturity-playing .packet { animation: none; } }
+    @media print { button, .controls, .motion-option { display: none; } .workbench, .lower { display: block; } .panel { break-inside: avoid; margin-bottom: 18px; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#guide">Skip to teaching guide</a>
+  <header class="masthead"><strong>CU / Architecture field guide</strong><span><a href="README.html">&larr; Maturity guide</a> &middot; Offline simulation &middot; No Azure connection</span></header>
+  <main id="guide">
+    <p class="eyebrow">Stage 3 / implementation deep dive</p>
+    <h1>One gateway. Two CU regions.<br>No moving jobs.</h1>
+    <p class="intro">Explore the single-APIM demonstration: signed polling URLs preserve regional affinity while new-work selection changes. The controls below change operating state within stage 3 of the <a href="README.html">availability maturity guide</a>.</p>
+    <div class="notice"><strong>Offline teaching simulation.</strong> All requests, URLs, responses and timings are synthetic. This page makes no service calls.</div>
+    <section id="demo" aria-labelledby="demo-title" tabindex="-1">
+      <h2 id="demo-title">Specifics of this example</h2>
+      <p class="callout"><strong>Ready to try real requests?</strong> Follow the <a href="README.md#deploy">deployment setup</a> and <a href="test-app/README.md#try-the-lab-in-order">live lab exercise</a>. This repository implements this single-APIM stage; the fourth stage in the architecture guide remains conceptual. This page is always an offline simulation, not a live client.</p>
+      <details>
+        <summary>From the stage-three demo to a real deployment</summary>
+        <ol class="rules">
+          <li>Choose a dedicated test resource group and copy <code>main.example.bicepparam</code> to <code>main.bicepparam</code>. Set publisher details, two supported regions, model versions/SKUs and quota. Sweden Central and West Europe are defaults, not required locations.</li>
+          <li>Follow <a href="README.md#run-deployment">the validation and deployment commands</a>. The scripts configure both CU stacks, the same analyzers, managed identities, signed result URLs and persistent active-backend selection. Wait for both stacks' provisioning to finish.</li>
+          <li>Start the local helper as shown in <a href="test-app/README.md#start">the app setup guide</a>. It imports deployment outputs when Azure controls are enabled. In the app, obtain an APIM serving subscription key from the portal instructions, then deliberately submit one sample invoice. This creates real, potentially billable usage.</li>
+          <li>Verify a primary baseline, a genuinely overdue pending or late-completed result, propagation to secondary for new work, and unchanged primary polling for the original job. Restore any test threshold and explicitly reset backend selection as separate actions.</li>
+        </ol>
+        <p>For stage four, design and test resilient ingress separately: regional gateways, shared HTTPS configuration, cross-gateway validation of original operation affinity, meaningful probes and DNS failover behavior. The current single-gateway signing/binding policy cannot simply be copied twice unchanged.</p>
+      </details>
+      <h3>Choose a stage-three system state</h3>
+    <div class="scenario-bar" role="group" aria-label="System state">
+      <button type="button" data-scenario="normal" aria-pressed="true">1. Normal operations</button>
+      <button type="button" data-scenario="degraded" aria-pressed="false">2. Degraded primary</button>
+      <button type="button" data-scenario="failover" aria-pressed="false">3. Failover</button>
+    </div>
+    <p class="scenario-description" id="scenario-description"></p>
+    <noscript><p class="callout">Enable JavaScript for the interactive walkthrough. The routing rules, rewrite examples and failover reference below remain readable without it.</p></noscript>
+    <div class="workbench">
+      <section class="panel" aria-labelledby="topology-title">
+        <div class="panel-head"><h2 id="topology-title">Same front door, different destinations</h2><span class="pill" id="scenario-badge">Normal operations</span></div>
+        <svg class="topology" viewBox="0 0 660 340" role="img" aria-labelledby="diagram-title diagram-description">
+          <title id="diagram-title">One APIM routes to two prepared CU regional stacks.</title>
+          <desc id="diagram-description">The browser always calls APIM. New POSTs follow active-backend. Result GETs follow the region bound in their signed token.</desc>
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#1959b7" stroke-width="1.5"/></marker>
+          </defs>
+          <path id="client-route" class="route" d="M155 154 H235" marker-end="url(#arrow)"/>
+          <path id="primary-route" class="route" d="M400 143 H435 V82 H485" marker-end="url(#arrow)"/>
+          <path id="secondary-route" class="route" d="M400 166 H435 V237 H485" marker-end="url(#arrow)"/>
+          <path id="management-route" class="route" d="M318 194 V265" marker-end="url(#arrow)"/>
+          <rect class="node" x="5" y="113" width="150" height="82" rx="12"/>
+          <text class="node-title" x="23" y="146">Browser / client</text>
+          <text class="node-note" x="23" y="171">POST + result GET</text>
+          <rect class="node gateway" x="235" y="106" width="165" height="88" rx="12"/>
+          <text class="node-title" x="254" y="140">One APIM</text>
+          <text class="node-note" x="254" y="164">Rewrite + validate</text>
+          <text class="node-note" x="254" y="182">Route + authenticate</text>
+          <rect id="primary-node" class="node" x="485" y="28" width="170" height="108" rx="12"/>
+          <text class="node-title" x="500" y="55">Primary CU</text>
+          <text class="node-note" x="500" y="78">Sweden Central</text>
+          <text class="node-note" x="500" y="99">Prepared analyzers</text>
+          <text class="node-note" x="500" y="119">+ local Foundry models</text>
+          <text id="primary-status" class="node-note" x="485" y="157">Accepts new work</text>
+          <rect id="secondary-node" class="node" x="485" y="183" width="170" height="108" rx="12"/>
+          <text class="node-title" x="500" y="210">Secondary CU</text>
+          <text class="node-note" x="500" y="233">West Europe</text>
+          <text class="node-note" x="500" y="254">Prepared analyzers</text>
+          <text class="node-note" x="500" y="274">+ local Foundry models</text>
+          <text id="secondary-status" class="node-note" x="485" y="313">Prepared standby</text>
+          <rect class="node" x="214" y="265" width="208" height="65" rx="10"/>
+          <text class="node-note" x="229" y="290">ARM: own named value</text>
+          <text class="node-note" x="229" y="313">active-backend (persistent)</text>
+        </svg>
+        <div class="legend"><span><i class="line" aria-hidden="true"></i>Highlighted request / control hop</span><span><i class="line old" aria-hidden="true"></i>Old operation pinned to primary</span></div>
+        <p class="caption">Illustrated APIM-to-CU hops come from policy/configuration, not captured browser traffic. The browser sees only APIM.</p>
+        <div class="state-grid">
+          <div class="stat"><span>Runtime destination for new POSTs</span><strong id="active-backend"></strong></div>
+          <div class="stat"><span>Operation A: accepting backend</span><strong>primary-cu / Sweden Central</strong></div>
+          <div class="stat"><span>Persistent management setting</span><strong id="management-state"></strong></div>
+          <div class="stat"><span>Operation A: synthetic observation</span><strong id="observation"></strong></div>
+        </div>
+        <div class="controls" role="group" aria-label="Walkthrough playback">
+          <button id="previous" type="button">Previous</button>
+          <button id="play" class="primary-button" type="button">Play walkthrough</button>
+          <button id="next" type="button">Next step</button>
+          <button id="restart" type="button">Restart scenario</button>
+        </div>
+        <label class="motion-option"><input id="motion" type="checkbox"> Animate request paths</label>
+        <p class="small">Playback advances illustrative observations every 5 seconds; it does not measure job age or trigger a real switch. Choosing a state restarts its independent teaching scenario, not Azure.</p>
+      </section>
+      <section class="panel" aria-labelledby="inspector-title">
+        <h2 id="inspector-title">Inside the gateway</h2>
+        <div id="step-announcement" role="status" aria-live="polite" aria-atomic="true">
+          <p class="step-count" id="step-count"></p>
+          <h3 id="step-title"></h3>
+          <p id="step-copy"></p>
+        </div>
+        <div class="step-list" id="step-list" aria-hidden="true"></div>
+        <div class="mapping">
+          <span class="mapping-label" id="before-label"></span><pre id="before"></pre>
+          <span class="mapping-label" id="after-label"></span><pre id="after"></pre>
+        </div>
+        <p class="callout" id="step-note"></p>
+        <details>
+          <summary>Open the synthetic signed-token envelope</summary>
+          <p>Format: <code>Base64(UTF-8 JSON).Base64(HMAC-SHA256(secret, encodedPayload))</code>. The complete token is URL-escaped in <code>gateway-token</code>. This is not a JWT.</p>
+          <pre id="token"></pre>
+          <p class="small">Synthetic token only: its signature is deliberately invalid. Never send it to APIM.</p>
+          <span class="mapping-label">Locally decoded example claims (not verified)</span>
+          <pre id="claims"></pre>
+          <p><strong>Signed, not encrypted.</strong> Anyone holding a URL can decode these claims. Only APIM, holding the signing secret, can validate the HMAC. The client must still send its APIM serving subscription key; the token is not a substitute.</p>
+          <p>APIM checks the signature and operation, allowed region, gateway, subscription, API version, APIM hostname and timestamp/lifetime bindings. The analyzer is included for correlation. The browser's decoded preview is not trusted routing evidence.</p>
+        </details>
+      </section>
+    </div>
+    <div class="lower">
+      <section class="panel" aria-labelledby="rewrites-title">
+        <p class="eyebrow">Three transformations, two directions</p>
+        <h2 id="rewrites-title">What APIM actually rewrites</h2>
+        <ol class="rules">
+          <li><strong>Analyze request, inbound:</strong> retain the Analyze route and API version; select the CU destination using <code>active-backend</code>. Remove client subscription credentials before forwarding and use APIM's managed identity for CU authentication.</li>
+          <li><strong>Accepted response, outbound:</strong> replace CU's original <code>Operation-Location</code> hostname with APIM's hostname and API path, adding the signed routing token. The client receives an APIM result URL, not the native CU URL.</li>
+          <li><strong>Result GET, inbound:</strong> validate the unchanged signed URL, choose the accepting backend from validated claims, strip <code>gateway-token</code> and client credentials, then forward the result request to CU. <strong>This is destination routing, not a second Operation-Location response rewrite.</strong></li>
+        </ol>
+        <details>
+          <summary>Read a static before / after example</summary>
+          <span class="mapping-label">CU accepted response (illustrated backend header)</span>
+          <pre>Operation-Location: https://cu-primary.example.invalid/contentunderstanding/analyzerResults/op-A?api-version=2025-11-01</pre>
+          <span class="mapping-label">APIM accepted response (client-facing header)</span>
+          <pre>Operation-Location: https://gateway.example.invalid/contentunderstanding/analyzerResults/op-A?api-version=2025-11-01&amp;gateway-token=&lt;URL-escaped payload.signature&gt;</pre>
+          <p>Client GETs that complete returned URL unchanged, with its serving subscription key. APIM removes the token and forwards to the primary CU URL above, even after new submissions switch to secondary.</p>
+        </details>
+      </section>
+      <section class="panel" aria-labelledby="trigger-title">
+        <p class="eyebrow">Observation, not a stopwatch</p>
+        <h2 id="trigger-title">What requests secondary selection?</h2>
+        <div class="table-wrap"><table>
+          <caption>Primary-degradation examples while primary is active; normal threshold = 60 seconds.</caption>
+          <thead><tr><th scope="col">Observed event</th><th scope="col">Switch request?</th></tr></thead>
+          <tbody>
+            <tr><td>Primary GET: HTTP 200, Running / NotStarted, signed age &gt; 60s (e.g. 61s)</td><td><strong>Yes</strong>, pending-latency path</td></tr>
+            <tr><td>Primary GET: HTTP 200, Succeeded, signed age &gt; 60s (e.g. 61s)</td><td><strong>Yes</strong>, completion-latency path; the result is still returned</td></tr>
+            <tr><td>Primary GET: Running or Succeeded at exactly 60s</td><td>No; strictly greater is required</td></tr>
+            <tr><td>Primary GET: Failed / Canceled at any age</td><td>No; terminal failures do not qualify</td></tr>
+            <tr><td>Result for an operation accepted by secondary, or any GET once secondary is active</td><td>No; both accepting and active backend must be primary-cu</td></tr>
+            <tr><td>Primary POST: 429 / 5xx, or forward-request error</td><td><strong>Yes</strong>, submission-error path; original failure returned</td></tr>
+            <tr><td>Slow HTTP round trip, animation timer, missing Retry-After, or no polling</td><td>No latency evidence</td></tr>
+            <tr><td>Restoring a temporary threshold</td><td>No; it does not reset selection</td></tr>
+          </tbody>
+        </table></div>
+        <p class="small">Age starts at APIM's receipt of the original Analyze POST (the signed <code>started</code> time). It includes polling gaps and client pauses, not pure engine time, so a delayed successful poll can trigger even if the service finished earlier. Live CU pending responses omitted Retry-After; the policy does not use that header. There is no health endpoint or synthetic probe; the last real response headers show the runtime backend, and a management-plane acceptance is not runtime activation. A temporary 2s test threshold is not an HTTP timeout or a guaranteed two-second switch.</p>
+      </section>
+    </div>
+    <section class="panel" style="margin-top:22px" aria-labelledby="limits-title">
+      <h2 id="limits-title">The boundaries worth remembering</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Invariant</th><th scope="col">Why it matters</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">ARM acceptance is not runtime activation</th><td>APIM uses managed identity to read and ETag-conditionally update its own named value. Conflicts or management failures can prevent switching; accepted writes take time to propagate. A previous response alone does not prove a new Analyze will use secondary; there is no health probe, and the last real response headers show the runtime backend.</td></tr>
+          <tr><th scope="row">Existing work never moves</th><td>Operation A stays in Sweden Central. A full primary outage can break its GETs even while new secondary jobs succeed. There is no automatic migration or replay of uncertain POSTs; resubmission can duplicate work and cost.</td></tr>
+          <tr><th scope="row">Secondary selection is sticky</th><td>No automatic failback or reverse failover. Restoring a threshold is separate from explicitly resetting active-backend to primary. Secondary health is not independently qualified by this switch.</td></tr>
+          <tr><th scope="row">One APIM remains one dependency</th><td>This design addresses CU backend degradation, not an outage of the APIM region. Both regional analyzer/model stacks must be prepared before serving work; nothing is copied during failover.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    </section>
+    <footer>Open this file directly in a browser. No installation, credentials, storage or services required. All example hosts use the reserved <code>.invalid</code> domain. <a href="README.md">Repository setup and usage guide</a>. <a href="README.md#local-validation">Run local teaching-guide and lab checks</a>. <a href="README.html">Back to the four-stage maturity guide</a>.</footer>
+  </main>
+  <script>
+    "use strict";
+    const $ = id => document.getElementById(id);
+    const gateway = "https://gateway.example.invalid/contentunderstanding";
+    const primary = "https://cu-primary.example.invalid/contentunderstanding";
+    const secondary = "https://cu-secondary.example.invalid/contentunderstanding";
+    const version = "?api-version=2025-11-01";
+    const claims = { operation: "op-A", region: "swedencentral", gateway: "teaching-apim", subscription: "synthetic-subscription", apiVersion: "2025-11-01", analyzer: "invoice", started: 1792584000000 };
+    const token = btoa(JSON.stringify(claims)) + "." + btoa("SYNTHETIC-INVALID-SIGNATURE");
+    const result = (root, operation = "op-A") => `${root}/analyzerResults/${operation}${version}`;
+    const polling = result(gateway) + "&gateway-token=" + encodeURIComponent(token);
+    const post = root => `${root}/analyzers/invoice:analyze${version}`;
+    const submission = {
+      title: "Submit once through the APIM front door",
+      copy: "The browser submits operation A. APIM selects primary-cu from active-backend, forwards once, and authenticates to CU using its managed identity.",
+      beforeLabel: "Client -> APIM (synthetic browser-side request)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
+      afterLabel: "APIM -> CU (policy-derived illustration)", after: `POST ${post(primary)}\nAuthorization: Bearer <APIM managed-identity access token>\nClient subscription credentials removed`,
+      note: "The client serving key is an APIM credential, not a CU credential. No real credential is used here.",
+      routes: ["client", "primary"], observed: "Submitted; awaiting acceptance"
+    };
+    const acceptance = {
+      title: "Replace the accepted response's Operation-Location",
+      copy: "CU accepts operation A in Sweden Central. APIM wraps the native result URL with its own hostname and a signed token binding the accepting region and original submission time.",
+      beforeLabel: "CU -> APIM (illustrated response header)", before: `HTTP 202 Accepted\nOperation-Location: ${result(primary)}`,
+      afterLabel: "APIM -> client (synthetic response header)", after: `HTTP 202 Accepted\nOperation-Location: ${polling}`,
+      note: "Keep the complete returned URL unchanged. This is the outbound response-header rewrite; the next GET performs inbound routing.",
+      routes: ["client", "primary"], observed: "Accepted in Sweden Central"
+    };
+    function poll(age, status, old = false) {
+      return {
+        title: old ? "Old primary work keeps its original destination" : status === "Succeeded" ? (age > 60 ? "Late completed result" : "Completed within threshold") : "Poll the same APIM URL; route to the accepting CU",
+        copy: old ? "A new operation can use secondary, but A's validated token still selects Sweden Central. Switching never migrates or replays A. If primary is completely unavailable, A's GET can still fail." : `APIM validates the signed token, routes A to primary-cu, and strips gateway-token. This synthetic result is HTTP 200 / ${status} at a signed age of ${age} seconds.`,
+        beforeLabel: "Client -> APIM (unchanged polling URL)", before: `GET ${polling}\nOcp-Apim-Subscription-Key: <same subscription's serving key>`,
+        afterLabel: "APIM -> original CU (policy-derived illustration)", after: `GET ${result(primary)}\nAuthorization: Bearer <APIM managed-identity access token>\n\nCU response: HTTP 200\n{"status":"${status}"}\nSigned operation age: ${age}s`,
+        note: old ? "Existing polling affinity is independent of active-backend. No new Operation-Location is being rewritten on this GET." : age > 60 ? (status === "Succeeded" ? "Succeeded + HTTP 200 + signed age > 60s qualifies as completion-latency when primary is both the accepting and active backend. The result is returned unchanged; the age includes polling gaps." : "Running + HTTP 200 + signed age > 60s qualifies as pending-latency when primary is both the accepting and active backend. The result is returned unchanged.") : "At or below 60s the strict > 60s comparison is false (exactly 60s does not switch); no switch is requested.",
+        routes: ["client", "primary"], old, observed: `${status} / ${age}s signed age`
+      };
+    }
+    const switchRequest = {
+      title: "Request a persistent switch; do not replay the POST",
+      copy: "After the qualifying primary result (here completion-latency; overdue pending work also qualifies), APIM uses managed identity for ARM access. It reads the named value and requests secondary-cu with the fresh ETag. The original successful CU result is preserved.",
+      beforeLabel: "Management request (illustrative, not a CU hop)", before: 'GET own namedValues/active-backend\n-> value: primary-cu, ETag: "synthetic-v1"\n\nPATCH own namedValues/active-backend\nIf-Match: "synthetic-v1"\nvalue: secondary-cu',
+      afterLabel: "Management accepted; runtime not yet proven", after: "Management setting: secondary-cu\nSwitch status: accepted-awaiting-activation\nAnalyze runtime in this scenario: still primary-cu",
+      note: "An ETag conflict or ARM failure can prevent this update. An accepted write is not instant activation and not proof that a new Analyze uses secondary.",
+      routes: ["management"], management: "secondary-cu (accepted)", observed: "Succeeded / 61s signed age"
+    };
+    const propagation = {
+      title: "Allow configuration to propagate",
+      copy: "The named-value write has been accepted. APIM policy runtimes can observe the update at different times. There is no health endpoint or synthetic probe: the last real response headers show which runtime backend served a request.",
+      beforeLabel: "Management-plane observation (synthetic)", before: "active-backend = secondary-cu\nWrite accepted",
+      afterLabel: "Possible data-plane observation during propagation", after: "A real response may still say X-CU-Backend: primary-cu\nA concurrent Analyze may still use primary-cu",
+      note: "This separate teaching step shows propagation, not a guaranteed duration or a timed failover SLA.",
+      routes: ["management"], management: "secondary-cu (accepted)", observed: "A remains pinned to primary"
+    };
+    const newSecondary = {
+      title: "New work is accepted by secondary",
+      copy: "After runtime activation, a deliberate new Analyze B uses the same APIM hostname but is accepted in West Europe. Its own signed result URL binds secondary. A remains a different primary operation.",
+      beforeLabel: "New client request (synthetic browser-side request)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
+      afterLabel: "Configured CU hop and synthetic gateway metadata", after: `POST ${post(secondary)}\n\nHTTP 202 Accepted\nX-CU-Backend: secondary-cu\nX-CU-Region: westeurope\nB's Operation-Location: same APIM, new operation + secondary-bound token`,
+      note: "In a real deployment, an actual accepted secondary Analyze establishes activation. This offline scenario is illustrative, not live evidence.",
+      routes: ["client", "secondary"], active: "secondary-cu / West Europe", management: "secondary-cu (persistent)", observed: "A remains pinned to primary"
+    };
+    const sticky = {
+      title: "Recovery requires an explicit manual reset",
+      copy: "Primary recovery does not automatically change active-backend. An operator must explicitly reset it to primary; this is separate from restoring a temporary test threshold.",
+      beforeLabel: "Independent configuration settings", before: "latency-threshold: 2s -> 60s (restore test override)\nactive-backend: secondary-cu (unchanged)",
+      afterLabel: "Separate deliberate recovery action", after: "Manual reset: active-backend -> primary-cu\nWait for propagation; verify new Analyze routing\nExisting operations retain their original affinity",
+      note: "This page does not perform either action. Restart and scenario selection only change the offline teaching view.",
+      routes: ["management"], active: "secondary-cu / West Europe", management: "secondary-cu (until manual reset)", observed: "Succeeded / original primary"
+    };
+    const scenarios = {
+      normal: {
+        label: "Normal operations",
+        description: "Primary takes new work. A signed result URL returns through APIM to the same primary backend, then completes without switching.",
+        steps: [submission, acceptance, poll(12, "Running"), poll(30, "Succeeded")]
+      },
+      degraded: {
+        label: "Degraded primary",
+        description: "Walk from a pending result at the exact threshold to a pending-latency observation (a late Succeeded would qualify the same way). Then separate the ARM switch request from runtime activation.",
+        steps: [submission, acceptance, poll(60, "Running"), poll(61, "Succeeded"), switchRequest, propagation]
+      },
+      failover: {
+        label: "Failover",
+        description: "Start just after a switch request. Wait for activation, send new work to secondary, and keep the old primary operation pinned to Sweden Central.",
+        steps: [switchRequest, propagation, newSecondary, { ...poll(90, "Succeeded", true), active: "secondary-cu / West Europe", management: "secondary-cu (persistent)" }, sticky]
+      }
+    };
+    let scenario = "normal";
+    let index = 0;
+    let timer = null;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    $("motion").checked = !reducedMotion.matches;
+    function updateMotion() {
+      document.body.classList.toggle("motion", $("motion").checked);
+    }
+    function pause() {
+      if (timer !== null) window.clearInterval(timer);
+      timer = null;
+      $("play").textContent = "Play walkthrough";
+      document.body.classList.add("paused");
+    }
+    function render() {
+      const current = scenarios[scenario];
+      const step = current.steps[index];
+      $("scenario-description").textContent = current.description;
+      $("scenario-badge").textContent = current.label;
+      $("step-count").textContent = `Step ${index + 1} of ${current.steps.length}`;
+      $("step-title").textContent = step.title;
+      $("step-copy").textContent = step.copy;
+      $("before-label").textContent = step.beforeLabel;
+      $("before").textContent = step.before;
+      $("after-label").textContent = step.afterLabel;
+      $("after").textContent = step.after;
+      $("step-note").textContent = step.note;
+      $("active-backend").textContent = step.active || "primary-cu / Sweden Central";
+      $("management-state").textContent = step.management || "primary-cu";
+      $("observation").textContent = step.observed;
+      const secondaryActive = Boolean(step.active);
+      const primaryDegraded = scenario !== "normal";
+      $("primary-node").classList.toggle("selected", !secondaryActive && !primaryDegraded);
+      $("primary-node").classList.toggle("degraded", primaryDegraded);
+      $("secondary-node").classList.toggle("selected", secondaryActive);
+      $("primary-status").textContent = secondaryActive ? "A stays here; no migration" : primaryDegraded ? "Pending / degraded scenario" : "Accepts new work";
+      $("secondary-status").textContent = secondaryActive ? "Accepts NEW work" : step.management ? "Selection propagating" : "Prepared standby";
+      $("previous").disabled = index === 0;
+      $("next").disabled = index === current.steps.length - 1;
+      document.querySelectorAll("[data-scenario]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.scenario === scenario)));
+      ["client", "primary", "secondary", "management"].forEach(route => {
+        const path = $(route + "-route");
+        path.classList.toggle("active", step.routes.includes(route));
+        path.classList.toggle("old", Boolean(step.old && route === "primary"));
+      });
+      $("diagram-description").textContent = `${current.label}. ${step.title}. ${step.copy}`;
+      $("step-list").replaceChildren(...current.steps.map((_, position) => {
+        const marker = document.createElement("span");
+        marker.className = "step-marker" + (position === index ? " current" : "");
+        return marker;
+      }));
+    }
+    document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => {
+      pause(); scenario = button.dataset.scenario; index = 0; render();
+    }));
+    $("previous").addEventListener("click", () => { pause(); if (index > 0) index--; render(); });
+    $("next").addEventListener("click", () => { pause(); if (index < scenarios[scenario].steps.length - 1) index++; render(); });
+    $("restart").addEventListener("click", () => { pause(); index = 0; render(); });
+    $("play").addEventListener("click", () => {
+      if (timer !== null) { pause(); return; }
+      if (index === scenarios[scenario].steps.length - 1) { index = 0; render(); }
+      $("play").textContent = "Pause walkthrough";
+      document.body.classList.remove("paused");
+      timer = window.setInterval(() => {
+        if (index < scenarios[scenario].steps.length - 1) { index++; render(); }
+        if (index === scenarios[scenario].steps.length - 1) pause();
+      }, 5000);
+    });
+    $("motion").addEventListener("change", updateMotion);
+    reducedMotion.addEventListener("change", event => {
+      $("motion").checked = !event.matches; updateMotion();
+      if (event.matches) pause();
+    });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+    $("token").textContent = token;
+    $("claims").textContent = JSON.stringify(claims, null, 2);
+    updateMotion();
+    render();
+  </script>
+</body>
+</html>

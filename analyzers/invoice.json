@@ -1,0 +1,31 @@
+{
+  "description": "Small custom invoice extraction sample.",
+  "baseAnalyzerId": "prebuilt-document",
+  "models": {
+    "completion": "${completionModel}"
+  },
+  "config": {
+    "returnDetails": true
+  },
+  "fieldSchema": {
+    "name": "Invoice",
+    "fields": {
+      "InvoiceNumber": {
+        "type": "string",
+        "description": "Invoice identifier printed on the invoice."
+      },
+      "VendorName": {
+        "type": "string",
+        "description": "Name of the supplier issuing the invoice."
+      },
+      "InvoiceDate": {
+        "type": "date",
+        "description": "Date the invoice was issued."
+      },
+      "TotalAmount": {
+        "type": "number",
+        "description": "Final invoice total including applicable taxes."
+      }
+    }
+  }
+}

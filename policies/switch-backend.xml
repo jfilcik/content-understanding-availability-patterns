@@ -1,0 +1,61 @@
+<fragment>
+  <set-variable name="switchStatus" value="not-applicable" />
+  <choose>
+    <when condition='@((string)context.Variables["requestBackend"] == "primary-cu" &amp;&amp; "{{active-backend}}" == "primary-cu")'>
+      <send-request mode="new" response-variable-name="routingRead" timeout="5" ignore-error="true">
+        <set-url>{{routing-state-url}}</set-url>
+        <set-method>GET</set-method>
+        <authentication-managed-identity resource="https://management.azure.com/" />
+      </send-request>
+      <set-variable name="switchStatus" value='@{
+        var response = context.Variables.GetValueOrDefault&lt;IResponse&gt;("routingRead", null);
+        if (response == null || response.StatusCode != 200) { return "read-failed"; }
+        var text = response.Body.As&lt;string&gt;(preserveContent: true);
+        if (text != null) { text = text.TrimStart((char)65279); }
+        if (String.IsNullOrWhiteSpace(text) || !text.TrimStart().StartsWith("{")) { return "invalid-routing-state"; }
+        Newtonsoft.Json.Linq.JObject body;
+        try { body = Newtonsoft.Json.Linq.JObject.Parse(text); }
+        catch (Newtonsoft.Json.JsonReaderException) { return "invalid-routing-state"; }
+        var properties = body["properties"] as Newtonsoft.Json.Linq.JObject;
+        var active = properties == null ? "" : (string)properties["value"];
+        if (active == "secondary-cu") { return "already-secondary"; }
+        if (active != "primary-cu") { return "invalid-routing-state"; }
+        return String.IsNullOrEmpty(response.Headers.GetValueOrDefault("ETag", "")) ? "missing-etag" : "eligible";
+      }' />
+      <choose>
+        <when condition='@((string)context.Variables["switchStatus"] == "eligible")'>
+          <send-request mode="new" response-variable-name="routingWrite" timeout="5" ignore-error="true">
+            <set-url>{{routing-state-url}}</set-url>
+            <set-method>PATCH</set-method>
+            <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+            <set-header name="If-Match" exists-action="override"><value>@(((IResponse)context.Variables["routingRead"]).Headers.GetValueOrDefault("ETag", ""))</value></set-header>
+            <set-body>{"properties":{"value":"secondary-cu"}}</set-body>
+            <authentication-managed-identity resource="https://management.azure.com/" />
+          </send-request>
+          <set-variable name="switchStatus" value='@{
+            var response = context.Variables.GetValueOrDefault&lt;IResponse&gt;("routingWrite", null);
+            if (response == null) { return "write-outcome-unknown"; }
+            if (response.StatusCode == 412) { return "conflict"; }
+            return response.StatusCode == 200 || response.StatusCode == 202 ? "accepted-awaiting-activation" : "write-failed";
+          }' />
+        </when>
+      </choose>
+      <choose>
+        <when condition='@((new [] { "accepted-awaiting-activation", "already-secondary" }).Contains((string)context.Variables["switchStatus"]))'>
+          <trace source="cu-routing" severity="information">
+            <message>@((string)context.Variables["switchStatus"])</message>
+            <metadata name="reason" value='@((string)context.Variables["degradationReason"])' />
+            <metadata name="backend" value='@((string)context.Variables["requestBackend"])' />
+          </trace>
+        </when>
+        <otherwise>
+          <trace source="cu-routing" severity="error">
+            <message>@((string)context.Variables["switchStatus"])</message>
+            <metadata name="reason" value='@((string)context.Variables["degradationReason"])' />
+            <metadata name="backend" value='@((string)context.Variables["requestBackend"])' />
+          </trace>
+        </otherwise>
+      </choose>
+    </when>
+  </choose>
+</fragment>
