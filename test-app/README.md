@@ -1,6 +1,8 @@
-# CU Observatory - local request lab
+# Validate Content Understanding regional failover with CU Observatory
 
-CU Observatory is the live request lab for the repository's **one APIM, two regional CU resources** example. It makes APIM's URL rewriting, signed result affinity and failover observable through real Analyze/result traffic. It is not a mock service or another deployment architecture.
+CU Observatory validates the **one APIM, two regional CU resources** design in step 4 of the [high availability and disaster recovery guide](https://jfilcik.github.io/content-understanding-availability-patterns/). Use real Analyze/result requests to inspect APIM routing, signed result affinity, failover detection and explicit recovery.
+
+The CU resource that accepts a request owns its job and stores its data at rest in that region for up to 24 hours. Model and supported OCR processing can use a broader scope independently. Moving new submissions to secondary does not move accepted jobs or recover their results; retain application inputs and completed results in your own durable store. See [recovery planning](../README.md#plan-for-disaster-recovery).
 
 Add your serving key in the prerequisite section at the top, then submit a document. The network trace is on the left; **Routes & resources** is the first/default tab in the right pane, followed by **Request inspector**. Drag the divider to give either pane more room. Analysis and polling go directly to APIM. An optional loopback-only Python helper supplies real Azure test controls; no additional Azure hosting is required.
 
@@ -129,6 +131,6 @@ npm --prefix .\test-app run test:browser
 
 Python tests cover management scope, restoration/restart/concurrency, persistent selection and local HTTP protections. Node covers requests, signed URL allowlisting, metadata, timing and redaction. Playwright exercises the real DOM, split/tabs/key UX, same-host routing, 2s/5s controls, sticky selection and reset using mocks.
 
-The same browser suite covers both offline HTML guides: stage selection, playback, normal/degraded/failover states, strict timing, cross-page links, keyboard navigation, reduced motion and mobile layout. [GitHub Pages publishing](../README.md#publish-the-html-guides-with-github-pages) is separate and never hosts this live app or its Azure control helper.
+The same browser suite covers both HTML guides: five design steps, independent model/OCR routing illustrations, playback, normal/degraded/failover states, strict timing, cross-page links, keyboard navigation, reduced motion and mobile layout. [GitHub Pages publishing](../README.md#publish-the-html-guides-with-github-pages) is separate and never hosts this live app or its Azure control helper.
 
 Browser tests use a separate control-disabled helper on port **5174**; the live app on 5173 may remain running. Override with `CU_OBSERVATORY_TEST_PORT`. To use installed Edge, set `PLAYWRIGHT_CHANNEL=msedge`. Automated tests do not submit Azure jobs or mutate real resources, and are not proof of live Azure behavior.

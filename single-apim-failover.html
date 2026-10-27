@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Offline walkthrough of single-APIM Content Understanding regional failover: request rewrites, signed result URLs, triggers and limits.">
+  <meta name="description" content="Understand Content Understanding regional failover with one API Management gateway: route new work, preserve job affinity, detect degradation and plan recovery.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Single-APIM CU failover demo | CU architecture guide</title>
+  <title>Regional failover with API Management | Content Understanding</title>
   <style>
     :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; color: #172e47; background: #f1f5fa; line-height: 1.55; --blue: #1959b7; --green: #126550; --amber: #875300; --muted: #52647b; --border: #d4deeb; }
     * { box-sizing: border-box; }
@@ -20,22 +20,20 @@
     :focus-visible { outline: 3px solid #9e5300; outline-offset: 4px; }
     .skip { position: absolute; top: -100px; left: 16px; background: white; padding: 12px; z-index: 10; }
     .skip:focus { top: 10px; }
-    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .masthead-brand { display: grid; gap: 4px; }
-    .masthead span { color: #c6d9eb; }
+    .masthead { max-width: 1440px; margin: auto; padding: 12px max(3vw, 20px); border-bottom: 1px solid var(--border); }
     .masthead nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .masthead nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-radius: 6px; color: #c6d9eb; text-underline-offset: 4px; }
-    .masthead nav a:hover { background: #203d5b; }
-    .masthead nav a[aria-current="page"] { color: white; font-weight: 700; }
+    .masthead nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-radius: 6px; text-underline-offset: 4px; }
+    .masthead nav a:hover { background: #e5edfa; }
+    .masthead nav a[aria-current="page"] { color: #172e47; font-weight: 700; }
     .repository-link svg { flex: none; fill: currentColor; }
     main { max-width: 1440px; margin: auto; padding: 38px max(3vw, 20px); }
     .eyebrow { text-transform: uppercase; letter-spacing: 1.7px; font-size: .73rem; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
-    h1 { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.12; letter-spacing: -1.5px; margin: 0 0 18px; }
+    h1 { font-size: clamp(1.8rem, 3vw, 2.7rem); line-height: 1.2; margin: 0 0 18px; }
     h2 { font-size: 1.15rem; margin: 0 0 12px; }
     h3 { font-size: 1rem; margin: 0 0 8px; }
     p { margin: 0 0 12px; }
     .intro { max-width: 850px; color: var(--muted); font-size: 1.06rem; }
-    .notice { margin: 24px 0; padding: 13px 18px; border-left: 4px solid var(--blue); background: #e5edfa; }
+    .notice { margin: 24px 0; padding: 13px 18px; border: 1px solid var(--border); border-radius: 6px; background: #e5edfa; }
     .scenario-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 12px; }
     .scenario-bar button { flex: 1; min-width: 180px; }
     .scenario-description { color: var(--muted); min-height: 3.1em; }
@@ -77,7 +75,7 @@
     code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size: .81rem; }
     code { overflow-wrap: anywhere; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f5fa; border: 1px solid var(--border); padding: 12px; border-radius: 7px; margin: 0; }
-    .callout { border-left: 3px solid #b37617; background: #fff6e2; padding: 12px 14px; font-size: .88rem; }
+    .callout { background: #fff6e2; padding: 12px 14px; border-radius: 6px; font-size: .88rem; }
     .step-list { display: flex; gap: 6px; margin: 16px 0; }
     .step-marker { height: 5px; background: #dce4ee; flex: 1; border-radius: 3px; }
     .step-marker.current { background: var(--blue); }
@@ -136,9 +134,8 @@
   </style>
 </head>
 <body>
-  <a class="skip" href="#guide">Skip to teaching guide</a>
+  <a class="skip" href="#guide">Skip to content</a>
   <header class="masthead">
-    <div class="masthead-brand"><strong>CU / Architecture field guide</strong><span>Offline simulation &middot; No Azure connection</span></div>
     <nav aria-label="Guide navigation">
       <a href="README.html">Availability guide</a>
       <a href="single-apim-failover.html" aria-current="page">APIM walkthrough</a>
@@ -165,25 +162,24 @@
     </nav>
   </header>
   <main id="guide">
-    <p class="eyebrow">Stage 3 / implementation deep dive</p>
-    <h1>One gateway. Two CU regions.<br>No moving jobs.</h1>
+    <h1>Regional Content Understanding failover with API Management</h1>
     <p id="work-in-progress" class="notice"><strong>Work in progress (WIP).</strong> This guide and the example lab are under active development. Details may change or be incomplete. Use them for learning and experimentation, not as production-ready guidance.</p>
-    <p class="intro">Explore the single-APIM demonstration: signed polling URLs preserve regional affinity while new-work selection changes. The controls below change operating state within stage 3 of the <a href="README.html">availability maturity guide</a>.</p>
-    <div class="notice"><strong>Offline teaching simulation.</strong> All requests, URLs, responses and timings are synthetic. This page makes no service calls.</div>
+    <p class="intro">Route new Content Understanding (CU) requests between two regions while keeping accepted jobs with their original resource. This walkthrough explains step 4 of the <a href="README.html">high availability and disaster recovery guide</a>: one Azure API Management (APIM) gateway, two prepared CU resources, and signed result URLs.</p>
+    <p>The accepting CU resource tracks each job and stores its data at rest in that region for up to 24 hours. Model and supported OCR processing scopes are separate. Changing the destination for new requests does not move accepted jobs or recover results from an unavailable region.</p>
     <section id="demo" aria-labelledby="demo-title" tabindex="-1">
-      <h2 id="demo-title">Specifics of this example</h2>
-      <p class="callout"><strong>Ready to try real requests?</strong> Follow the <a href="README.md#deploy">deployment setup</a> and <a href="test-app/README.md#try-the-lab-in-order">live lab exercise</a>. This repository implements this single-APIM stage; the fourth stage in the architecture guide remains conceptual. This page is always an offline simulation, not a live client.</p>
+      <h2 id="demo-title">Follow the regional failover flow</h2>
+      <p>Choose an operating state and advance through the request, response and management steps. To validate the implementation in Azure, follow the <a href="README.md#deploy">deployment setup</a> and <a href="test-app/README.md#try-the-lab-in-order">lab exercise</a>. Step 5's multi-gateway ingress is a separate design extension.</p>
       <details>
-        <summary>From the stage-three demo to a real deployment</summary>
+        <summary>Deploy the step-4 implementation</summary>
         <ol class="rules">
           <li>Choose a dedicated test resource group and copy <code>main.example.bicepparam</code> to <code>main.bicepparam</code>. Set publisher details, two supported regions, model versions/SKUs and quota. Sweden Central and West Europe are defaults, not required locations.</li>
           <li>Follow <a href="README.md#run-deployment">the validation and deployment commands</a>. The scripts configure both CU stacks, the same analyzers, managed identities, signed result URLs and persistent active-backend selection. Wait for both stacks' provisioning to finish.</li>
           <li>Start the local helper as shown in <a href="test-app/README.md#start">the app setup guide</a>. It imports deployment outputs when Azure controls are enabled. In the app, obtain an APIM serving subscription key from the portal instructions, then deliberately submit one sample invoice. This creates real, potentially billable usage.</li>
           <li>Verify a primary baseline, a genuinely overdue pending or late-completed result, propagation to secondary for new work, and unchanged primary polling for the original job. Restore any test threshold and explicitly reset backend selection as separate actions.</li>
         </ol>
-        <p>For stage four, design and test resilient ingress separately: regional gateways, shared HTTPS configuration, cross-gateway validation of original operation affinity, meaningful probes and DNS failover behavior. The current single-gateway signing/binding policy cannot simply be copied twice unchanged.</p>
+        <p>For step 5, design and test resilient ingress separately: regional gateways, shared HTTPS configuration, cross-gateway validation of original operation affinity, meaningful probes and DNS failover behavior. The current single-gateway signing/binding policy cannot simply be copied twice unchanged.</p>
       </details>
-      <h3>Choose a stage-three system state</h3>
+      <h3>Choose an operating state</h3>
     <div class="scenario-bar" role="group" aria-label="System state">
       <button type="button" data-scenario="normal" aria-pressed="true">1. Normal operations</button>
       <button type="button" data-scenario="degraded" aria-pressed="false">2. Degraded primary</button>
@@ -193,7 +189,7 @@
     <noscript><p class="callout">Enable JavaScript for the interactive walkthrough. The routing rules, rewrite examples and failover reference below remain readable without it.</p></noscript>
     <div class="workbench">
       <section class="panel" aria-labelledby="topology-title">
-        <div class="panel-head"><h2 id="topology-title">Same front door, different destinations</h2><span class="pill" id="scenario-badge">Normal operations</span></div>
+        <div class="panel-head"><h2 id="topology-title">One gateway, two regional job owners</h2><span class="pill" id="scenario-badge">Normal operations</span></div>
         <svg class="topology" viewBox="0 0 660 340" role="img" aria-labelledby="diagram-title diagram-description">
           <title id="diagram-title">One APIM routes to two prepared CU regional stacks.</title>
           <desc id="diagram-description">The browser always calls APIM. New POSTs follow active-backend. Result GETs follow the region bound in their signed token.</desc>
@@ -217,25 +213,25 @@
           <text class="node-title" x="500" y="55">Primary CU</text>
           <text class="node-note" x="500" y="78">Sweden Central</text>
           <text class="node-note" x="500" y="99">Prepared analyzers</text>
-          <text class="node-note" x="500" y="119">+ local Foundry models</text>
+          <text class="node-note" x="500" y="119">+ configured models</text>
           <text id="primary-status" class="node-note" x="485" y="157">Accepts new work</text>
           <rect id="secondary-node" class="node" x="485" y="183" width="170" height="108" rx="12"/>
           <text class="node-title" x="500" y="210">Secondary CU</text>
           <text class="node-note" x="500" y="233">West Europe</text>
           <text class="node-note" x="500" y="254">Prepared analyzers</text>
-          <text class="node-note" x="500" y="274">+ local Foundry models</text>
+          <text class="node-note" x="500" y="274">+ configured models</text>
           <text id="secondary-status" class="node-note" x="485" y="313">Prepared standby</text>
           <rect class="node" x="214" y="265" width="208" height="65" rx="10"/>
           <text class="node-note" x="229" y="290">ARM: own named value</text>
           <text class="node-note" x="229" y="313">active-backend (persistent)</text>
         </svg>
         <div class="legend"><span><i class="line" aria-hidden="true"></i>Highlighted request / response / control hop</span><span><i class="line old" aria-hidden="true"></i>Old operation pinned to primary</span></div>
-        <p class="caption">Illustrated APIM-to-CU hops come from policy/configuration, not captured browser traffic. The browser sees only APIM.</p>
+        <p class="caption">The client uses APIM for both submission and result retrieval. Model deployment type and OCR processing scope are independent of this regional routing.</p>
         <div class="state-grid">
           <div class="stat"><span>Runtime destination for new POSTs</span><strong id="active-backend"></strong></div>
           <div class="stat"><span>Operation A: accepting backend</span><strong>primary-cu / Sweden Central</strong></div>
           <div class="stat"><span>Persistent management setting</span><strong id="management-state"></strong></div>
-          <div class="stat"><span>Operation A: synthetic observation</span><strong id="observation"></strong></div>
+          <div class="stat"><span>Operation A: example observation</span><strong id="observation"></strong></div>
         </div>
         <div class="controls" role="group" aria-label="Walkthrough playback">
           <button id="previous" type="button">Previous</button>
@@ -244,7 +240,7 @@
           <button id="restart" type="button">Restart scenario</button>
         </div>
         <label class="motion-option"><input id="motion" type="checkbox"> Animate request paths</label>
-        <p class="small">Playback advances illustrative observations every 5 seconds; it does not measure job age or trigger a real switch. Choosing a state restarts its independent teaching scenario, not Azure.</p>
+        <p class="small">Playback advances every 5 seconds. Use <strong>Next step</strong> to move at your own pace.</p>
       </section>
       <section class="panel" aria-labelledby="inspector-title">
         <h2 id="inspector-title">Inside the gateway</h2>
@@ -260,7 +256,7 @@
         </div>
         <p class="callout" id="step-note"></p>
         <details>
-          <summary>Open the synthetic signed-token envelope</summary>
+          <summary>Inspect the example signed token</summary>
           <p>Format: <code>Base64(UTF-8 JSON).Base64(HMAC-SHA256(secret, encodedPayload))</code>. The complete token is URL-escaped in <code>gateway-token</code>. This is not a JWT.</p>
           <pre id="token"></pre>
           <p class="small">Synthetic token only: its signature is deliberately invalid. Never send it to APIM.</p>
@@ -310,19 +306,20 @@
       </section>
     </div>
     <section class="panel" style="margin-top:22px" aria-labelledby="limits-title">
-      <h2 id="limits-title">The boundaries worth remembering</h2>
+      <h2 id="limits-title">Availability and recovery boundaries</h2>
       <div class="table-wrap"><table>
         <thead><tr><th scope="col">Invariant</th><th scope="col">Why it matters</th></tr></thead>
         <tbody>
           <tr><th scope="row">ARM acceptance is not runtime activation</th><td>APIM uses managed identity to read and ETag-conditionally update its own named value. Conflicts or management failures can prevent switching; accepted writes take time to propagate. A previous response alone does not prove a new Analyze will use secondary; there is no health probe, and the last real response headers show the runtime backend.</td></tr>
-          <tr><th scope="row">Existing work never moves</th><td>Operation A stays in Sweden Central. A full primary outage can break its GETs even while new secondary jobs succeed. There is no automatic migration or replay of uncertain POSTs; resubmission can duplicate work and cost.</td></tr>
+          <tr><th scope="row">Existing work never moves</th><td>Operation A stays in Sweden Central. A full primary outage can break its GETs even while new secondary jobs succeed. There is no automatic migration or replay of uncertain POSTs; resubmission can duplicate work and cost. Store source documents and completed results durably and define reconciliation rules.</td></tr>
           <tr><th scope="row">Secondary selection is sticky</th><td>No automatic failback or reverse failover. Restoring a threshold is separate from explicitly resetting active-backend to primary. Secondary health is not independently qualified by this switch.</td></tr>
           <tr><th scope="row">One APIM remains one dependency</th><td>This design addresses CU backend degradation, not an outage of the APIM region. Both regional analyzer/model stacks must be prepared before serving work; nothing is copied during failover.</td></tr>
+          <tr><th scope="row">Processing scope is independent of CU placement</th><td>The sample defaults model deployments to GlobalStandard. A local deployment resource does not guarantee local inference, and two CU resources can still share a processing dependency. OCR processingLocation is a separate supported-operation setting.</td></tr>
         </tbody>
       </table></div>
     </section>
     </section>
-    <footer>Open this file directly in a browser. No installation, credentials, storage or services required. All example hosts use the reserved <code>.invalid</code> domain. <a href="README.md">Repository setup and usage guide</a>. <a href="README.md#local-validation">Run local teaching-guide and lab checks</a>. <a href="README.html">Back to the four-stage maturity guide</a>.</footer>
+    <footer><a href="README.html">High availability and disaster recovery guide</a> &middot; <a href="README.md#deploy">Deploy the sample</a> &middot; <a href="README.md#plan-for-disaster-recovery">Recovery planning</a></footer>
   </main>
   <script>
     "use strict";
@@ -339,7 +336,7 @@
     const submission = {
       title: "Submit once through the APIM front door",
       copy: "The browser submits operation A. APIM selects primary-cu from active-backend, forwards once, and authenticates to CU using its managed identity.",
-      beforeLabel: "Client -> APIM (synthetic browser-side request)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
+      beforeLabel: "Client -> APIM (example request)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
       afterLabel: "APIM -> CU (policy-derived illustration)", after: `POST ${post(primary)}\nAuthorization: Bearer <APIM managed-identity access token>\nClient subscription credentials removed`,
       note: "The client serving key is an APIM credential, not a CU credential. No real credential is used here.",
       routes: ["client", "primary"], observed: "Submitted; awaiting acceptance"
@@ -348,14 +345,14 @@
       title: "Replace the accepted response's Operation-Location",
       copy: "CU accepts operation A in Sweden Central. APIM wraps the native result URL with its own hostname and a signed token binding the accepting region and original submission time.",
       beforeLabel: "CU -> APIM (illustrated response header)", before: `HTTP 202 Accepted\nOperation-Location: ${result(primary)}`,
-      afterLabel: "APIM -> client (synthetic response header)", after: `HTTP 202 Accepted\nOperation-Location: ${polling}`,
+      afterLabel: "APIM -> client (example response header)", after: `HTTP 202 Accepted\nOperation-Location: ${polling}`,
       note: "Keep the complete returned URL unchanged. This is the outbound response-header rewrite; the next GET performs inbound routing.",
       routes: ["client", "primary"], reverse: true, observed: "Accepted in Sweden Central"
     };
     function poll(age, status, old = false) {
       return {
         title: old ? "Old primary work keeps its original destination" : status === "Succeeded" ? (age > 60 ? "Late completed result" : "Completed within threshold") : "Poll the same APIM URL; route to the accepting CU",
-        copy: old ? "A new operation can use secondary, but A's validated token still selects Sweden Central. Switching never migrates or replays A. If primary is completely unavailable, A's GET can still fail." : `APIM validates the signed token, routes A to primary-cu, and strips gateway-token. This synthetic result is HTTP 200 / ${status} at a signed age of ${age} seconds.`,
+        copy: old ? "A new operation can use secondary, but A's validated token still selects Sweden Central. Switching never migrates or replays A. If primary is completely unavailable, A's GET can still fail." : `APIM validates the signed token, routes A to primary-cu, and strips gateway-token. The example result is HTTP 200 / ${status} at a signed age of ${age} seconds.`,
         beforeLabel: "Client -> APIM (unchanged polling URL)", before: `GET ${polling}\nOcp-Apim-Subscription-Key: <same subscription's serving key>`,
         afterLabel: "APIM -> original CU (policy-derived illustration)", after: `GET ${result(primary)}\nAuthorization: Bearer <APIM managed-identity access token>\n\nCU response: HTTP 200\n{"status":"${status}"}\nSigned operation age: ${age}s`,
         note: old ? "Existing polling affinity is independent of active-backend. No new Operation-Location is being rewritten on this GET." : age > 60 ? (status === "Succeeded" ? "Succeeded + HTTP 200 + signed age > 60s qualifies as completion-latency when primary is both the accepting and active backend. The result is returned unchanged; the age includes polling gaps." : "Running + HTTP 200 + signed age > 60s qualifies as pending-latency when primary is both the accepting and active backend. The result is returned unchanged.") : "At or below 60s the strict > 60s comparison is false (exactly 60s does not switch); no switch is requested.",
@@ -373,7 +370,7 @@
     const propagation = {
       title: "Allow configuration to propagate",
       copy: "The named-value write has been accepted. APIM policy runtimes can observe the update at different times. There is no health endpoint or synthetic probe: the last real response headers show which runtime backend served a request.",
-      beforeLabel: "Management-plane observation (synthetic)", before: "active-backend = secondary-cu\nWrite accepted",
+      beforeLabel: "Management-plane observation (example)", before: "active-backend = secondary-cu\nWrite accepted",
       afterLabel: "Possible data-plane observation during propagation", after: "A real response may still say X-CU-Backend: primary-cu\nA concurrent Analyze may still use primary-cu",
       note: "This separate teaching step shows propagation, not a guaranteed duration or a timed failover SLA.",
       routes: ["management"], management: "secondary-cu (accepted)", observed: "A remains pinned to primary"
@@ -381,9 +378,9 @@
     const newSecondary = {
       title: "New work is accepted by secondary",
       copy: "After runtime activation, a deliberate new Analyze B uses the same APIM hostname but is accepted in West Europe. Its own signed result URL binds secondary. A remains a different primary operation.",
-      beforeLabel: "New client request (synthetic browser-side request)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
-      afterLabel: "Configured CU hop and synthetic gateway metadata", after: `POST ${post(secondary)}\n\nHTTP 202 Accepted\nX-CU-Backend: secondary-cu\nX-CU-Region: westeurope\nB's Operation-Location: same APIM, new operation + secondary-bound token`,
-      note: "In a real deployment, an actual accepted secondary Analyze establishes activation. This offline scenario is illustrative, not live evidence.",
+      beforeLabel: "New client request (example)", before: `POST ${post(gateway)}\nOcp-Apim-Subscription-Key: <client serving key>`,
+      afterLabel: "Configured CU hop and example gateway metadata", after: `POST ${post(secondary)}\n\nHTTP 202 Accepted\nX-CU-Backend: secondary-cu\nX-CU-Region: westeurope\nB's Operation-Location: same APIM, new operation + secondary-bound token`,
+      note: "In your deployment, verify an accepted secondary Analyze to establish runtime activation rather than relying on a management read.",
       routes: ["client", "secondary"], active: "secondary-cu / West Europe", management: "secondary-cu (persistent)", observed: "A remains pinned to primary"
     };
     const sticky = {
@@ -391,7 +388,7 @@
       copy: "Primary recovery does not automatically change active-backend. An operator must explicitly reset it to primary; this is separate from restoring a temporary test threshold.",
       beforeLabel: "Independent configuration settings", before: "latency-threshold: 2s -> 60s (restore test override)\nactive-backend: secondary-cu (unchanged)",
       afterLabel: "Separate deliberate recovery action", after: "Manual reset: active-backend -> primary-cu\nWait for propagation; verify new Analyze routing\nExisting operations retain their original affinity",
-      note: "This page does not perform either action. Restart and scenario selection only change the offline teaching view.",
+      note: "Restore the threshold separately from backend selection, and verify propagation before resuming the workload.",
       routes: ["management"], active: "secondary-cu / West Europe", management: "secondary-cu (until manual reset)", observed: "Succeeded / original primary"
     };
     const scenarios = {
@@ -402,7 +399,7 @@
       },
       degraded: {
         label: "Degraded primary",
-        description: "Walk from a pending result at the exact threshold to a pending-latency observation (a late Succeeded would qualify the same way). Then separate the ARM switch request from runtime activation.",
+        description: "Compare a pending result at exactly 60 seconds with a successful result at 61 seconds. Then follow the completion-latency switch request and configuration propagation. Overdue pending results also qualify.",
         steps: [submission, acceptance, poll(60, "Running"), poll(61, "Succeeded"), switchRequest, propagation]
       },
       failover: {

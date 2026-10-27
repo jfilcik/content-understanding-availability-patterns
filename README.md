@@ -1,20 +1,56 @@
-# Content Understanding availability patterns
+# High availability and disaster recovery for Content Understanding
 
 > [!NOTE]
 > **Work in progress (WIP).** These guides and the example lab are under active development. Details may change or be incomplete. Use them for learning and experimentation, not as production-ready guidance.
 
-Learn how to keep an Azure AI Content Understanding (CU) workload available, then try a deployable multi-region example. This repository combines animated, offline architecture guides with an Azure-backed request lab that makes API Management (APIM) routing, URL rewriting and failover visible.
+Build a highly available Azure Content Understanding (CU) system by designing for each of its dependencies: the regional CU service, model inference, OCR and layout processing, and your application's ingress. This walkthrough explains those boundaries, then provides a deployable multi-region example using Azure API Management (APIM).
 
-**Start without Azure:** Open the [availability architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) in your browser. Compare four availability stages, then open the [single-APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) to step through normal operations, degraded primary and failover. Both guides use synthetic examples and require no credentials or Azure connection. For offline viewing, download or clone the repository and open `README.html` locally.
+## Understand the service boundaries
+
+**A CU job belongs to a regional resource.** The resource that accepts an Analyze request tracks that job and serves its results. Content Understanding stores customer data at rest in the same region as the CU resource. Input documents, intermediate representations and final results are retained for **up to 24 hours**, then automatically deleted; the Delete Result API can delete them earlier. This regional storage boundary helps you choose where job data resides. It is not a durable application archive or a guarantee that every processing step stays in that region.
+
+**Extraction depends on separately configured processing services.** CU uses OCR/layout processing and, for field extraction, your configured language models, including Azure OpenAI models in Microsoft Foundry. Their processing scopes are independent of CU job storage. A supported Data Zone or Global configuration can access processing capacity beyond a single region, but it does not move the CU resource, replicate accepted jobs or eliminate the model endpoint's own availability dependency.
+
+| Concern | Configuration | What it controls |
+|---|---|---|
+| CU job ownership and storage | CU resource region | Where the job is tracked and its data is stored at rest. Poll its accepting resource. |
+| Model inference | Model **deployment type**, such as Data Zone Standard (`DataZoneStandard`) or Global Standard (`GlobalStandard`) | The eligible processing scope for that model. It is not a CU Analyze location parameter. |
+| OCR/layout processing | **`processingLocation`**: `geography`, `dataZone` or `global` | Processing scope for supported `prebuilt-read` and `prebuilt-layout` requests. Don't assume every extraction analyzer supports this control. |
+| Result retrieval | **`Operation-Location`** response header | The URL to poll for one accepted job, not a model/OCR processing-location setting. |
+
+Regional resource placement, data at rest and processing location are different decisions. Even model deployment types described as regional can process within the documented Azure geography rather than exclusively in the resource's region. Check the [CU data handling and retention documentation](https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy) and [Foundry model deployment types](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/deployment-types) against your residency requirements.
+
+## Walk through the architecture
+
+Open the [interactive architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) and work through five design steps:
+
+1. **Start with a regional CU resource.** Identify the job owner, result storage, OCR/layout and model dependencies.
+2. **Broaden model processing scope.** Compare a geography-based model deployment with supported Data Zone or Global deployments. CU and its regional OCR endpoint remain in place.
+3. **Broaden OCR processing scope separately.** Keep the model configuration from step 2 and compare supported OCR `processingLocation` choices. The two controls are independent.
+4. **Fail over new work between CU regions.** Put two prepared CU resources behind one APIM and preserve each accepted job's original result destination.
+5. **Address gateway-region failure.** Consider separate regional gateways and resilient ingress. This extension is not deployed by the sample.
+
+Then open the [single-APIM failover walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) for request routing, signed `Operation-Location` URLs, detection and recovery. The guides require no credentials. Download both HTML files together to view them locally.
 
 | Part | What it does | Requires Azure? |
 |---|---|---|
-| [Architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) | Compares a regional baseline, broader inference/OCR capacity, two CU resources behind one APIM, and a conceptual two-gateway ingress design. | No |
+| [Architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/) | Explains regional job ownership, model processing, OCR processing, CU failover and resilient ingress in five steps. | No |
 | [APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) | Animates Analyze, signed `Operation-Location` rewriting, region-pinned GETs and the failover state changes. | No |
-| Bicep, policies and deployment scripts | Deploy and provision **one regional APIM and two regional CU/Foundry stacks**, corresponding to stage 3 of the guide. | Yes |
+| Bicep, policies and deployment scripts | Deploy and provision **one regional APIM and two regional CU/Foundry stacks**, corresponding to step 4 of the guide. | Yes |
 | [CU Observatory](test-app/README.md) | Submits real analyses, inspects requests and runs explicit failover/reset experiments against your deployment. | Yes, for analysis and management controls |
 
-This is a learning sample, not a production availability guarantee. The deployment does **not** implement every architecture in the guide: in particular, it does not deploy the conceptual stage-4 ingress or a second APIM. Review the [deliberate limits](#deliberate-limits) before adapting it.
+This repository is an architecture walkthrough and sample implementation, not an Azure service availability guarantee. It doesn't deploy step 5's second APIM or ingress, or automatically change OCR processing scope. The model deployment SKU defaults to `GlobalStandard`; choose a supported alternative before deployment if needed. Review the [recovery design](#plan-for-disaster-recovery) and [implementation limits](#deliberate-limits) before adapting the sample.
+
+## Plan for disaster recovery
+
+High availability keeps new work flowing during degradation. Disaster recovery also needs a plan for accepted work, retained inputs and results, configuration, and restoration after an outage.
+
+- Set application **recovery time objective (RTO)** and **recovery point objective (RPO)** targets. Measure recovery, including detection, APIM configuration propagation and any ingress/DNS delay; this sample promises no fixed recovery time.
+- Keep source documents and completed results in application-owned durable storage with your required residency, retention and recovery controls. CU's up-to-24-hour retention is not a backup.
+- Track the application request ID, accepting CU resource, complete polling URL and completion state securely. An accepted operation does not move to a second CU resource.
+- Prepare matching analyzers, model mappings, permissions, networking and sufficient capacity in the secondary before an incident. Two CU resources can still share a processing dependency; model placement and deployment type need their own review.
+- Define how to handle an unavailable or uncertain operation. Resubmission creates a new job, can duplicate processing and cost, and needs application-level reconciliation. The sample never replays a POST automatically.
+- Exercise failover and explicit failback, including primary-region result unavailability. Backend switching alone is not disaster recovery for the entire application.
 
 ## Start here
 
@@ -25,7 +61,7 @@ This is a learning sample, not a production availability guarantee. The deployme
    Set-Location content-understanding-availability-patterns
    ```
 
-2. Open the [architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/), or open `README.html` locally. Select a stage, read its trade-offs and use the animation controls. Follow the [single-APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) for the three operating states and request/response URL mappings. These are teaching simulations, not live resource observations.
+2. Open the [architecture guide](https://jfilcik.github.io/content-understanding-availability-patterns/), or open `README.html` locally. Select a design step, read its trade-offs and follow the request flow. Use the [single-APIM walkthrough](https://jfilcik.github.io/content-understanding-availability-patterns/single-apim-failover.html) to examine the three operating states and URL mappings.
 3. To try real traffic, [prepare and deploy the Azure lab](#deploy), then [start CU Observatory](#local-test-web-app). Expect charges for APIM, model deployments, telemetry and CU usage; use a dedicated test resource group.
 4. In Observatory, add the APIM serving key, submit one analysis and select its POST/result GET rows. Compare the returned `Operation-Location`, accepting CU and new-work selection. Follow the [failover exercise](test-app/README.md#try-the-lab-in-order) before changing settings.
 
@@ -33,13 +69,15 @@ This is a learning sample, not a production availability guarantee. The deployme
 
 ## Deployed architecture
 
-One Azure API Management instance selects between two prepared regional CU/Foundry stacks. New submissions use a persistent active-backend setting; signed result URLs keep polling the exact accepting CU resource through **the same APIM hostname**. There is no Traffic Manager, DNS workaround, Front Door, runtime analyzer replication, Function App, queue or external routing-state service in the active deployment.
+The step-4 implementation uses one Azure API Management instance to select between two prepared regional CU/Foundry stacks. New submissions use a persistent active-backend setting; signed result URLs keep polling the exact accepting CU resource through **the same APIM hostname**. Each CU resource retains its own job data. The template creates model deployments in each resource's region, but their deployment type determines processing scope; `GlobalStandard` does not restrict inference to that region. There is no Traffic Manager, DNS workaround, Front Door, runtime analyzer replication, Function App, queue or external routing-state service in the active deployment.
 
 ```mermaid
 flowchart LR
     Browser[Client / local test app] -->|Analyze POST / signed result GET| APIM[Single APIM HTTPS endpoint]
-    APIM -->|primary-cu| CUA[Primary CU + local model deployments]
-    APIM -->|secondary-cu| CUB[Secondary CU + local model deployments]
+    APIM -->|primary-cu| CUA[Primary CU / regional job owner]
+    APIM -->|secondary-cu| CUB[Secondary CU / regional job owner]
+    CUA --> ModelsA[Configured model deployments / independent processing scope]
+    CUB --> ModelsB[Configured model deployments / independent processing scope]
     APIM -. Managed identity / ETag PATCH .-> State[Own active-backend named value]
     State -. Eventually propagated selection for new POSTs .-> APIM
 ```
@@ -140,7 +178,7 @@ param primaryLocation = 'swedencentral' // APIM and primary CU
 param secondaryLocation = 'westeurope' // Secondary CU
 ```
 
-Use Azure location IDs, not display names. Changing these parameters changes where the complete regional stacks are created; it is not a failover control or an in-place move of an existing resource. Use a new resource group for a different regional deployment. The local lab reads the chosen locations from deployment outputs; the offline teaching guide uses the default regions for its examples.
+Use Azure location IDs, not display names. Changing these parameters changes where the regional resources are created; it is not a failover control or an in-place move of an existing resource. Use a new resource group for a different regional deployment. The local lab reads the chosen locations from deployment outputs; the architecture guide uses the default regions for its examples. Set `modelDeploymentSkuName` and `embeddingDeploymentSkuName` separately from resource placement. Their `GlobalStandard` defaults permit global model processing; selecting another region alone doesn't narrow that scope.
 
 Fresh Foundry resources use compact names such as `foundry-swc-abc123` and `foundry-weu-def456`. This sample uses `swc` for Sweden Central and `weu` for West Europe as **naming codes**, not Azure location IDs. A deterministic six-character suffix reduces global-name collisions. Other regions default to their full location ID in the name; optionally set `primaryRegionCode` / `secondaryRegionCode` to your organization's short codes. Codes affect naming only, not placement. You can also override `primaryFoundryName` / `secondaryFoundryName` if a name is unavailable.
 

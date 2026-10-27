@@ -76,7 +76,7 @@ async function expectClearRoutes(page, diagram, paths, nodes) {
 
 test("OFFLINE GUIDE: all stages and the regional outage have separated connectors, valid ports and arrowheads", async ({ page }) => {
   await page.goto(architectureUrl);
-  for (let stage = 0; stage < 4; stage++) {
+  for (let stage = 0; stage < 5; stage++) {
     await page.locator(`[data-stage="${stage}"]`).click();
     await expectClearRoutes(page, "#maturity-diagram", "#maturity-edges path", "#maturity-nodes rect");
     const next = page.locator("#job-next");
@@ -92,6 +92,17 @@ test("OFFLINE GUIDE: all stages and the regional outage have separated connector
   const dns = await page.locator("#maturity-edges .dns").evaluateAll((paths) =>
     paths.map((path) => [path.getPointAtLength(0).x, path.getPointAtLength(path.getTotalLength()).x]));
   expect(dns).toEqual([[65, 65], [125, 125]]);
+  for (const stage of [1, 2]) {
+    await page.locator(`[data-stage="${stage}"]`).click();
+    await page.locator("#model-route").click();
+    await expectClearRoutes(page, "#maturity-diagram", "#maturity-edges path", "#maturity-nodes rect");
+    await expect(page.locator('[data-edge="model-route-b"]')).toHaveClass(/highlight/);
+    if (stage === 2) {
+      await page.locator("#ocr-route").click();
+      await expectClearRoutes(page, "#maturity-diagram", "#maturity-edges path", "#maturity-nodes rect");
+      await expect(page.locator('[data-edge="ocr-route-b"]')).toHaveClass(/highlight/);
+    }
+  }
 });
 
 test("OFFLINE GUIDE: APIM routes stay clear and acceptance arrows point back to the client", async ({ page }) => {
@@ -117,7 +128,7 @@ test("OFFLINE GUIDE: APIM routes stay clear and acceptance arrows point back to 
   await expect(page.locator("#primary-route")).toHaveAttribute("marker-start", "none");
 });
 
-test("OFFLINE GUIDE: header navigation has a local GitHub mark, works both ways and fits mobile", async ({ page }) => {
+test("GUIDE: simple navigation has a local GitHub mark, works both ways and fits mobile", async ({ page }) => {
   for (const url of [architectureUrl, walkthroughUrl]) {
     await page.goto(url);
     const navigation = page.getByRole("navigation", { name: "Guide navigation" });
@@ -126,6 +137,9 @@ test("OFFLINE GUIDE: header navigation has a local GitHub mark, works both ways 
     await expect(repository.locator("svg")).toBeVisible();
     await expect(repository.locator("svg")).toHaveAttribute("aria-hidden", "true");
     await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator(".masthead-brand")).toHaveCount(0);
+    await expect(page.getByText("Offline teaching simulation.", { exact: true })).toHaveCount(0);
+    await expect(page.locator("h1")).toHaveCount(1);
     for (const width of [1440, 768, 375]) {
       await page.setViewportSize({ width, height: 1000 });
       await expect(repository).toBeVisible();
@@ -133,6 +147,13 @@ test("OFFLINE GUIDE: header navigation has a local GitHub mark, works both ways 
       const links = await navigation.getByRole("link").evaluateAll((anchors) =>
         anchors.map((anchor) => anchor.getBoundingClientRect().height));
       expect(links.every((height) => height >= 44)).toBe(true);
+    }
+    if (url === architectureUrl) {
+      for (let stage = 0; stage < 5; stage++) {
+        await page.locator(`[data-stage="${stage}"]`).click();
+        await expect(page.locator("#maturity-stage-title")).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
     }
   }
   await page.getByRole("navigation").getByRole("link", { name: "Availability guide", exact: true }).focus();

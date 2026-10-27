@@ -109,6 +109,25 @@ class TeachingSiteTests(unittest.TestCase):
             self.assertIn(site + "single-apim-failover.html", links, name)
             self.assertFalse(any(link.endswith(".html") and not urlsplit(link).scheme for link in links), name)
 
+    def test_docs_distinguish_regional_storage_processing_and_recovery(self):
+        for name in ("README.md", "README.html", "single-apim-failover.html", "test-app/README.md"):
+            content = (ROOT / name).read_text(encoding="utf-8")
+            with self.subTest(name=name):
+                self.assertIn("up to 24 hours", content)
+                self.assertIn("processing", content)
+                self.assertNotIn("Offline teaching simulation", content)
+                self.assertNotIn("CU / Architecture field guide", content)
+                self.assertNotIn("four-stage", content)
+                self.assertNotIn("stage-three", content)
+                self.assertNotIn("stage 3", content)
+        architecture = (ROOT / "README.html").read_text(encoding="utf-8")
+        for value in ("DataZoneStandard", "GlobalStandard", "processingLocation", "Operation-Location", "RTO", "RPO"):
+            self.assertIn(value, architecture)
+        self.assertIn('data-stage="4"', architecture)
+        self.assertIn('id="model-route"', architecture)
+        self.assertIn('id="ocr-route"', architecture)
+        self.assertIn("not a backup", architecture)
+
     def test_build_refuses_stale_output_instead_of_publishing_extra_files(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "site"

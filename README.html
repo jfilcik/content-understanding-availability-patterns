@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Explore four stages of Content Understanding availability, from regional processing and cross-region inference/OCR capacity to resilient ingress.">
+  <meta name="description" content="Design Content Understanding systems for high availability and disaster recovery: regional jobs, model and OCR processing, CU failover and resilient ingress.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Four stages of availability | CU architecture guide</title>
+  <title>High availability and disaster recovery for Content Understanding</title>
   <style>
     :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; color: #172e47; background: #f1f5fa; line-height: 1.55; --blue: #1959b7; --green: #126550; --amber: #875300; --muted: #52647b; --border: #d4deeb; }
     * { box-sizing: border-box; }
@@ -20,22 +20,22 @@
     :focus-visible { outline: 3px solid #9e5300; outline-offset: 4px; }
     .skip { position: absolute; top: -100px; left: 16px; background: white; padding: 12px; z-index: 10; }
     .skip:focus { top: 10px; }
-    .masthead { background: #112940; color: white; padding: 18px max(5vw, 20px); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .masthead-brand { display: grid; gap: 4px; }
-    .masthead span { color: #c6d9eb; }
+    .masthead { max-width: 1440px; margin: auto; padding: 12px max(3vw, 20px); border-bottom: 1px solid var(--border); }
     .masthead nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .masthead nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-radius: 6px; color: #c6d9eb; text-underline-offset: 4px; }
-    .masthead nav a:hover { background: #203d5b; }
-    .masthead nav a[aria-current="page"] { color: white; font-weight: 700; }
+    .masthead nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-radius: 6px; text-underline-offset: 4px; }
+    .masthead nav a:hover { background: #e5edfa; }
+    .masthead nav a[aria-current="page"] { color: #172e47; font-weight: 700; }
     .repository-link svg { flex: none; fill: currentColor; }
     main { max-width: 1440px; margin: auto; padding: 38px max(3vw, 20px); }
     .eyebrow { text-transform: uppercase; letter-spacing: 1.7px; font-size: .73rem; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
-    h1 { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.12; letter-spacing: -1.5px; margin: 0 0 18px; }
+    h1 { font-size: clamp(1.8rem, 3vw, 2.7rem); line-height: 1.2; margin: 0 0 18px; }
     h2 { font-size: 1.15rem; margin: 0 0 12px; }
     h3 { font-size: 1rem; margin: 0 0 8px; }
     p { margin: 0 0 12px; }
     .intro { max-width: 850px; color: var(--muted); font-size: 1.06rem; }
-    .notice { margin: 24px 0; padding: 13px 18px; border-left: 4px solid var(--blue); background: #e5edfa; }
+    .notice { margin: 24px 0; padding: 13px 18px; border: 1px solid var(--border); border-radius: 6px; background: #e5edfa; }
+    .fundamentals { max-width: 1000px; margin: 28px 0; }
+    .fundamentals h3 { margin-top: 20px; }
     .scenario-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 12px; }
     .scenario-bar button { flex: 1; min-width: 180px; }
     .scenario-description { color: var(--muted); min-height: 3.1em; }
@@ -76,7 +76,7 @@
     code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size: .81rem; }
     code { overflow-wrap: anywhere; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f5fa; border: 1px solid var(--border); padding: 12px; border-radius: 7px; margin: 0; }
-    .callout { border-left: 3px solid #b37617; background: #fff6e2; padding: 12px 14px; font-size: .88rem; }
+    .callout { background: #fff6e2; padding: 12px 14px; border-radius: 6px; font-size: .88rem; }
     .step-list { display: flex; gap: 6px; margin: 16px 0; }
     .step-marker { height: 5px; background: #dce4ee; flex: 1; border-radius: 3px; }
     .step-marker.current { background: var(--blue); }
@@ -93,7 +93,7 @@
     caption { text-align: left; color: var(--muted); font-size: .8rem; margin-bottom: 8px; }
     footer { color: var(--muted); font-size: .8rem; margin-top: 26px; }
     .maturity { margin: 26px 0; }
-    .stage-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 20px 0; }
+    .stage-buttons { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin: 20px 0; }
     .stage-buttons button { text-align: left; padding: 14px; }
     .stage-buttons span { display: block; font-size: .72rem; font-weight: 400; margin-top: 5px; }
     .maturity-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
@@ -117,8 +117,8 @@
     .maturity-info h3:not(:first-child) { margin-top: 16px; }
     .maturity-info p { font-size: .9rem; }
     .flow-log { margin: 16px 0; padding-left: 24px; font-size: .85rem; }
-    .flow-log li { padding: 6px 8px; border-left: 3px solid transparent; }
-    .flow-log li[aria-current="step"] { border-left-color: var(--blue); background: #e5edfa; font-weight: 650; }
+    .flow-log li { padding: 6px 8px; }
+    .flow-log li[aria-current="step"] { background: #e5edfa; font-weight: 650; }
     .stage-compare { margin-top: 26px; }
     .stage-compare tr.current { background: #eaf2ff; }
     .stage-compare td:first-child { font-weight: 650; }
@@ -135,9 +135,8 @@
   </style>
 </head>
 <body>
-  <a class="skip" href="#guide">Skip to teaching guide</a>
+  <a class="skip" href="#guide">Skip to content</a>
   <header class="masthead">
-    <div class="masthead-brand"><strong>CU / Architecture field guide</strong><span>Offline simulation &middot; No Azure connection</span></div>
     <nav aria-label="Guide navigation">
       <a href="README.html" aria-current="page">Availability guide</a>
       <a href="single-apim-failover.html">APIM walkthrough</a>
@@ -164,19 +163,26 @@
     </nav>
   </header>
   <main id="guide">
-    <p class="eyebrow">Learn before you deploy</p>
-    <h1>Build availability,<br>one layer at a time.</h1>
+    <h1>High availability and disaster recovery for Content Understanding</h1>
     <p id="work-in-progress" class="notice"><strong>Work in progress (WIP).</strong> This guide and the example lab are under active development. Details may change or be incomplete. Use them for learning and experimentation, not as production-ready guidance.</p>
-    <p class="intro">Start with Content Understanding (CU) in one region. Enable cross-region processing for model inference and OCR/layout to access more eligible GPU capacity, add regional backend failover, then remove the single gateway-region dependency. Explore four teaching stages and open the separate single-APIM demo page.</p>
-    <div class="notice"><strong>Offline teaching simulation.</strong> All requests, URLs, responses and timings are synthetic. This page makes no service calls. Stages are design choices, not an SLA ranking or a required deployment sequence; broader pools and endpoint failover solve different problems.</div>
+    <p class="intro">Design a highly available Azure Content Understanding (CU) system by addressing each dependency separately. Start with regional job ownership, choose model and OCR processing scopes, then add CU regional failover and resilient ingress.</p>
+    <section class="fundamentals" aria-labelledby="boundaries-title">
+      <h2 id="boundaries-title">Understand the service boundaries</h2>
+      <h3>A job belongs to a regional CU resource</h3>
+      <p>The CU resource that accepts an Analyze request tracks that job and serves its results. Customer data at rest stays in the same region as the CU resource. Input documents, intermediate representations and final results are retained for <strong>up to 24 hours</strong>, then automatically deleted; Delete Result can remove them earlier. Choose that region to meet your storage requirements, and retain completed results in your application's durable store.</p>
+      <h3>Processing services have their own scope</h3>
+      <p>CU uses OCR/layout processing and your configured language models, including Azure OpenAI models in Microsoft Foundry, to extract fields. Model <strong>deployment type</strong> and supported OCR <strong><code>processingLocation</code></strong> settings independently determine where processing can occur. Data Zone or Global processing can use capacity beyond one region; it does not relocate the CU job or its stored results.</p>
+      <p>Separate <a href="https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy">storage location from processing location</a>. A regional endpoint alone does not guarantee all processing stays in that region. <strong><code>Operation-Location</code></strong> is the response header containing a job's polling URL, not a model or OCR location setting.</p>
+    </section>
     <section class="panel maturity" aria-labelledby="maturity-title">
-      <div class="panel-head"><h2 id="maturity-title">Four stages of Content Understanding availability</h2><span class="pill" id="maturity-badge">1 / 4</span></div>
-      <p>Choose a stage, then follow a synthetic job through its architecture. Data Zone and Global are processing-scope options, not separate HA tiers.</p>
-      <div class="stage-buttons" role="group" aria-label="Availability maturity stage">
-        <button type="button" data-stage="0" aria-pressed="true">1. Regional baseline<span>One CU + regional processing</span></button>
-        <button type="button" data-stage="1" aria-pressed="false">2. Cross-region inference &amp; OCR<span>More eligible GPUs: Data Zone / Global</span></button>
-        <button type="button" data-stage="2" aria-pressed="false">3. Regional CU failover<span>One APIM, two CU resources</span></button>
-        <button type="button" data-stage="3" aria-pressed="false">4. Resilient ingress<span>DNS + two regional gateways</span></button>
+      <div class="panel-head"><h2 id="maturity-title">Five steps to design for availability</h2><span class="pill" id="maturity-badge">1 / 5</span></div>
+      <p>Follow a request through each design. Steps 2 and 3 configure different processing dependencies; neither replaces CU endpoint failover.</p>
+      <div class="stage-buttons" role="group" aria-label="Availability design step">
+        <button type="button" data-stage="0" aria-pressed="true">1. Regional baseline<span>Regional job + results</span></button>
+        <button type="button" data-stage="1" aria-pressed="false">2. Model processing<span>Model deployment type</span></button>
+        <button type="button" data-stage="2" aria-pressed="false">3. OCR processing<span>OCR processingLocation</span></button>
+        <button type="button" data-stage="3" aria-pressed="false">4. Regional CU failover<span>One APIM, two CU resources</span></button>
+        <button type="button" data-stage="4" aria-pressed="false">5. Resilient ingress<span>DNS + regional gateways</span></button>
       </div>
       <div class="maturity-layout">
         <div>
@@ -194,17 +200,18 @@
               <g id="maturity-packets" aria-hidden="true"></g>
             </svg>
           </div>
-          <p class="caption">Schematic, not a network capture. Arrows show logical dependencies, not every internal service hop. Separate lanes show requests and their return paths; dashed lines are DNS lookup and answer, not HTTP proxying. On small screens, scroll the diagram horizontally; the text walkthrough gives the same information.</p>
-          <div class="controls" role="group" aria-label="Maturity diagram controls">
-            <button type="button" id="stage-previous">Previous stage</button>
-            <button type="button" id="stage-next">Next stage</button>
-            <button type="button" id="job-play" class="primary-button">Send a synthetic job</button>
-            <button type="button" id="job-next">Next job step</button>
+          <p class="caption">Arrows show logical request and return paths. Capacity boxes illustrate eligible processing locations, not dedicated deployments or guaranteed automatic failover. Dashed arrows show DNS, not HTTP proxying. On narrow screens, scroll the diagram or follow the text walkthrough.</p>
+          <div class="controls" role="group" aria-label="Architecture diagram controls">
+            <button type="button" id="stage-previous">Previous design</button>
+            <button type="button" id="stage-next">Next design</button>
+            <button type="button" id="job-play" class="primary-button">Play request flow</button>
+            <button type="button" id="job-next">Next request step</button>
+            <button type="button" id="model-route" aria-pressed="false" hidden>Show alternate model route</button>
+            <button type="button" id="ocr-route" aria-pressed="false" hidden>Show alternate OCR route</button>
             <button type="button" id="region-outage" aria-pressed="false" hidden>Illustrate primary-region outage</button>
           </div>
-          <label class="motion-option"><input id="maturity-motion" type="checkbox"> Animate flow markers (both diagrams)</label>
-          <p class="small">Job playback is a compressed explanation, not measured service timing. It stops at the final step. Reduced-motion users can advance one step at a time.</p>
-          <ol id="maturity-log" class="flow-log" aria-label="Synthetic job walkthrough"></ol>
+          <label class="motion-option"><input id="maturity-motion" type="checkbox"> Animate request paths</label>
+          <ol id="maturity-log" class="flow-log" aria-label="Request walkthrough"></ol>
         </div>
         <aside class="maturity-info" aria-labelledby="maturity-stage-title">
           <p class="eyebrow" id="stage-scope"></p>
@@ -212,45 +219,50 @@
           <p id="stage-description"></p>
           <h3>What improves</h3><p id="stage-gain"></p>
           <h3>What remains exposed</h3><p id="stage-limit"></p>
+          <h3>Configuration</h3><p id="stage-setting"></p>
           <p class="callout" id="stage-caveat"></p>
           <p id="maturity-job-status" role="status" aria-live="polite" aria-atomic="true"></p>
-          <a id="stage-demo-link" class="jump-link" href="single-apim-failover.html">Explore stage 3: APIM demo page</a>
+          <a id="stage-demo-link" class="jump-link" href="single-apim-failover.html">Explore step 4: CU failover</a>
         </aside>
       </div>
       <div class="stage-compare">
-        <h3 id="comparison-title">Compare the progression</h3>
+        <h3 id="comparison-title">Compare the design choices</h3>
         <div class="table-wrap" tabindex="0" role="region" aria-labelledby="comparison-title"><table>
           <caption>Additional scope can improve capacity flexibility, but it does not guarantee more GPUs per request, unlimited quota, uniform latency or recovery of accepted jobs.</caption>
-          <thead><tr><th scope="col">Stage</th><th scope="col">Architecture / change</th><th scope="col">Benefit</th><th scope="col">Remaining dependency</th></tr></thead>
+          <thead><tr><th scope="col">Step</th><th scope="col">Configuration or architecture</th><th scope="col">Benefit</th><th scope="col">Remaining dependency</th></tr></thead>
           <tbody>
-            <tr data-stage-row="0"><th scope="row">1. Regional baseline</th><td>Client calls one regional CU; CU uses OCR and Foundry models.</td><td>Simplest starting topology; narrow processing scope.</td><td>One CU endpoint and its processing dependencies.</td></tr>
-            <tr data-stage-row="1"><th scope="row">2. Cross-region inference &amp; OCR</th><td>Use supported cross-region processing for both Foundry model inference and CU OCR/layout: Data Zone (such as US or EU) or Global.</td><td>More eligible GPUs can back requests across the chosen zone or globe, rather than relying only on regional processing capacity.</td><td>Support and configuration differ by model/analyzer. CU ingress/orchestration remains regional; no guaranteed GPUs per request or endpoint failover.</td></tr>
-            <tr data-stage-row="2"><th scope="row">3. Regional CU failover</th><td>One APIM selects between two prepared CU stacks and signs result URLs.</td><td>New submissions can move to a different CU region. <a href="single-apim-failover.html">Open the detailed demo page</a>.</td><td>One gateway region remains; old operations stay with their accepting CU.</td></tr>
-            <tr data-stage-row="3"><th scope="row">4. Resilient ingress</th><td>Traffic Manager DNS selects between two regional APIM endpoints.</td><td>Remove the single gateway-region dependency for new connections.</td><td>DNS/probe delay, TLS, shared routing trust, regional job affinity and independent dependency readiness.</td></tr>
+            <tr data-stage-row="0"><th scope="row">1. Regional baseline</th><td>One CU job owner, OCR/layout and configured Foundry models.</td><td>Clear regional ownership and result storage.</td><td>CU endpoint, model endpoint and processing capacity.</td></tr>
+            <tr data-stage-row="1"><th scope="row">2. Model processing</th><td>Choose a supported Data Zone or Global model deployment type, such as <code>DataZoneStandard</code> or <code>GlobalStandard</code>.</td><td>Broader eligible model-processing capacity.</td><td>The model endpoint and CU endpoint remain dependencies; OCR configuration is unchanged.</td></tr>
+            <tr data-stage-row="2"><th scope="row">3. OCR processing</th><td>For supported <code>prebuilt-read</code>/<code>prebuilt-layout</code> requests, choose <code>processingLocation</code> of <code>dataZone</code> or <code>global</code>.</td><td>Broader OCR processing scope, independently of model configuration.</td><td>Analyzer/API support and CU endpoint availability. Not a blanket setting for extraction analyzers.</td></tr>
+            <tr data-stage-row="3"><th scope="row">4. Regional CU failover</th><td>One APIM routes new requests to two prepared CU resources and signs result URLs.</td><td>Continue new submissions in another CU region. <a href="single-apim-failover.html">Follow the implementation</a>.</td><td>One gateway region; accepted jobs remain with their original CU.</td></tr>
+            <tr data-stage-row="4"><th scope="row">5. Resilient ingress</th><td>Traffic Manager DNS selects between regional APIM endpoints.</td><td>Address gateway-region failure for new connections.</td><td>DNS/probe delay, TLS, cross-gateway trust and regional job affinity. Not deployed by this sample.</td></tr>
           </tbody>
         </table></div>
         <details>
-          <summary>Processing scope and source notes</summary>
-          <p>Cross-region inference and OCR/layout belong to the same capacity-expansion stage: both can use more eligible GPU capacity beyond one region. Data Zone limits processing to an eligible zone, such as US or EU; Global permits processing across the globe within the service's supported locations. These are processing choices, not separate HA tiers or a promise that a single request runs on multiple GPUs.</p>
-          <p>The model and OCR controls still need to be configured for their supported operations. Foundry uses supported model deployment types; public CU guidance describes <code>processingLocation</code> for <code>prebuilt-read</code> and <code>prebuilt-layout</code> only. This page does not claim that every custom extraction analyzer can broaden its OCR scope, or that the stage-three invoice demo configures that option. Cross-region processing does not relocate the CU endpoint or its stored results.</p>
-          <p>Grounding: <a href="https://learn.microsoft.com/azure/foundry/foundry-models/concepts/deployment-types">Foundry model deployment types</a>, <a href="https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy">CU processing locations and data handling</a>, and <a href="https://learn.microsoft.com/azure/traffic-manager/traffic-manager-how-it-works">How Traffic Manager DNS works</a>. Check the current API, region, analyzer and model availability before deployment.</p>
+          <summary>Processing scope and configuration reference</summary>
+          <p>Model inference uses a <strong>deployment type</strong>, not <code>Operation-Location</code> or the CU resource's Azure location. Data Zone Standard (<code>DataZoneStandard</code>) and Global Standard (<code>GlobalStandard</code>) dynamically route to eligible datacenters within their respective boundaries. Geography-based types do not guarantee processing exclusively in one region. Broader capacity does not guarantee recovery from loss of the model endpoint's primary region.</p>
+          <p>OCR/layout has a different control: <strong><code>processingLocation</code></strong>, with values <code>geography</code>, <code>dataZone</code> and <code>global</code>. Public CU guidance scopes it to <code>prebuilt-read</code> and <code>prebuilt-layout</code>. Step 3 carries forward step 2's model configuration to show the independent controls; an OCR-only request does not need an LLM call.</p>
+          <p>The sample defaults model deployments to <code>GlobalStandard</code> and does not automatically broaden OCR scope. Check current model, analyzer, API and region support: <a href="https://learn.microsoft.com/azure/foundry/foundry-models/concepts/deployment-types">Foundry model deployment types</a>, <a href="https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy">CU data handling and processing locations</a>, and <a href="https://learn.microsoft.com/azure/traffic-manager/traffic-manager-how-it-works">Traffic Manager DNS routing</a>.</p>
         </details>
       </div>
     </section>
     <section class="panel" style="margin-top:22px" aria-labelledby="deep-dive-title">
-      <p class="eyebrow">Stage 3 / implementation deep dive</p>
-      <h2 id="deep-dive-title">See how this example works</h2>
-      <p>This repository deploys stage 3: one APIM gateway, two prepared CU regions, signed result URLs and no moving jobs. The other stages are architecture illustrations, not additional deployment modes. A separate page walks through normal operations, degraded primary and failover, the URL rewrites, failover triggers and invariants.</p>
-      <p><a class="jump-link" href="single-apim-failover.html">Open the single-APIM failover demo</a></p>
-      <h3>Try the real lab after the walkthrough</h3>
+      <h2 id="deep-dive-title">Implement regional CU failover</h2>
+      <p>The sample implements step 4: one APIM gateway, two prepared CU resources and signed result URLs that keep each job with its accepting region. Follow normal operations, primary degradation and failover in the <a href="single-apim-failover.html">single-APIM walkthrough</a>, then deploy the lab.</p>
+      <h3>Deploy and validate</h3>
       <ol class="rules">
         <li>Follow <a href="README.md#deploy">Azure deployment setup</a>: sign in, choose a dedicated test resource group, copy the parameter file and select two supported regions/models before deploying.</li>
         <li>Run validation and deployment with the provided scripts. They provision the same analyzers in both CU resources and preserve the gateway's signing/serving credentials on redeployment.</li>
         <li>Start <a href="test-app/README.md#start">CU Observatory</a> locally, add the APIM serving key and submit a sample invoice. Inspect the real POST/result traffic, then use the bounded failover and recovery exercise.</li>
       </ol>
-      <p class="small">The offline guides never submit work or change settings. The live lab creates potentially billable Azure usage. Sweden Central and West Europe are defaults; change them before deployment. GitHub's file viewer shows HTML source; download these two HTML files together or use the repository's opt-in GitHub Pages publishing workflow.</p>
+      <p class="small">Azure resources and analyses incur charges. Sweden Central and West Europe are defaults; choose supported regions, model deployments and capacity before deploying.</p>
     </section>
-    <footer>Open this file directly in a browser. No installation, credentials, storage or services required. All example hosts use the reserved <code>.invalid</code> domain. <a href="README.md">Repository setup and usage guide</a>. <a href="README.md#local-validation">Run local teaching-guide and lab checks</a>.</footer>
+    <section class="fundamentals" aria-labelledby="recovery-title">
+      <h2 id="recovery-title">Plan recovery beyond routing</h2>
+      <p>Set recovery time (RTO) and recovery point (RPO) objectives for your application. Keep source documents and completed results in application-owned durable storage; CU's up-to-24-hour retention is not a backup. Securely track the accepting resource and polling URL for every job, and prepare matching analyzers, model mappings, permissions and capacity in secondary before an incident.</p>
+      <p>A regional outage can leave previously accepted results unavailable. Define deliberate resubmission and duplicate-reconciliation rules, then test failover and explicit failback. This sample never automatically replays submissions or migrates jobs. Review the <a href="README.md#plan-for-disaster-recovery">recovery checklist</a> and <a href="README.md#deliberate-limits">implementation limits</a>.</p>
+    </section>
+    <footer><a href="README.md">Deployment and usage</a> &middot; <a href="README.md#local-validation">Local validation</a> &middot; <a href="https://learn.microsoft.com/azure/foundry/responsible-ai/content-understanding/data-privacy">CU data privacy and retention</a></footer>
   </main>
   <script>
     "use strict";
@@ -259,42 +271,57 @@
     $("maturity-motion").checked = !reducedMotion.matches;
     const maturityStages = [
       {
-        title: "Start with one regional stack",
-        scope: "Regional baseline / illustrative starting point",
-        description: "The client submits to CU. The regional CU orchestrator uses OCR/layout processing and, for extraction, calls the configured Foundry models. Responses and result polling return through that CU endpoint.",
-        gain: "The fewest customer-managed routing components. Prepare an analyzer and model access/capacity before sending work.",
-        limit: "A single CU endpoint and its dependencies remain on the critical path. There is no customer-managed regional failover.",
-        caveat: "Regional processing is an illustrative starting configuration. Check the specific model deployment's documented processing boundary; a regional resource name alone does not establish every processing location."
+        title: "Start with a regional CU resource",
+        scope: "1 / Regional ownership",
+        description: "The regional CU resource accepts the request, tracks its job and serves the result. OCR/layout and configured Foundry models are separate processing dependencies.",
+        gain: "A clear job owner and storage boundary. Data at rest stays in the CU resource's region for up to 24 hours.",
+        limit: "One CU endpoint, its model endpoint and processing capacity remain dependencies. There is no application-managed regional failover.",
+        setting: "Choose the CU resource region, prepare analyzers and configure model access. The baseline illustrates geography-based processing before broadening either dependency.",
+        caveat: "Regional storage does not mean every processing step is region-local. A geography-based model deployment may process across regions within its documented geography."
       },
       {
-        title: "Cross-region model inference and OCR/layout",
-        scope: "More eligible GPU capacity / Data Zone or Global",
-        description: "Let both model inference and supported OCR/layout processing draw on capacity across regions: within a Data Zone, such as US or EU, or globally. The regional CU endpoint orchestrates the request while processing can reach beyond that region.",
-        gain: "More eligible GPUs can back your requests instead of relying only on regional processing capacity. This is one capacity-expansion step covering inference and OCR/layout, not two different maturity levels.",
-        limit: "This does not guarantee additional GPUs for each request, unlimited quota, uniform latency, or failover of the CU endpoint. Residency requirements and model/analyzer support still apply.",
-        caveat: "Configure supported Foundry deployment types for inference and the supported OCR processingLocation separately. Public OCR guidance covers prebuilt-read and prebuilt-layout; do not assume it applies to every extraction analyzer. OCR-only requests need not invoke an LLM."
+        title: "Broaden model processing scope",
+        scope: "2 / Model inference",
+        description: "Keep the regional CU resource and OCR/layout endpoint. Configure a supported Foundry model deployment to use eligible processing capacity across a Data Zone or globally.",
+        gain: "More eligible model-processing capacity. The alternate route illustrates another eligible processing region behind the same model deployment.",
+        limit: "CU and the model endpoint remain dependencies. OCR processing scope is unchanged. Broader capacity is not unlimited quota, uniform latency or guaranteed endpoint failover.",
+        setting: "Model deployment type: Data Zone Standard (DataZoneStandard) or Global Standard (GlobalStandard), where supported. This is not a processingLocation or Operation-Location setting.",
+        caveat: "The service selects eligible model capacity; the drawn regions are examples, not customer-selected replicas or a promise of per-request failover. Check model availability and residency requirements."
+      },
+      {
+        title: "Broaden OCR processing scope separately",
+        scope: "3 / OCR and layout",
+        description: "Carry forward step 2's model configuration, then broaden supported OCR/layout processing independently. The regional CU resource still owns the job and stores its results.",
+        gain: "A broader eligible OCR processing scope as well as model capacity. Change each illustrated route independently to see the separate dependencies.",
+        limit: "The CU endpoint is still regional. The OCR control is documented for prebuilt-read and prebuilt-layout, not every custom extraction analyzer.",
+        setting: "OCR processingLocation: geography, dataZone or global for supported requests. It is separate from the Foundry model deployment type and the Operation-Location polling header.",
+        caveat: "The combined diagram compares dependencies, not a claim that every analyzer uses both configurable paths. OCR-only requests skip the LLM hop. The invoice lab does not automatically configure this OCR option."
       },
       {
         title: "Fail over new work behind one APIM",
-        scope: "Stage-three demo / backend regional resilience",
-        description: "Deploy two prepared CU stacks. One APIM selects the active backend for new Analyze requests and rewrites accepted result URLs with signed regional affinity.",
-        gain: "CU degradation can switch new submissions to another region. The detailed demo page explains the latency triggers (pending or Succeeded results older than the threshold) and submission-error triggers.",
-        limit: "APIM is still a single regional ingress dependency. Existing operations stay pinned to their accepting CU and can be unavailable during its outage.",
-        caveat: "Neither an ARM-accepted update nor a readiness response proves Analyze activation. No automatic POST replay, job migration or failback. Pool-scope choices remain independent of this routing layer."
+        scope: "4 / Implemented regional failover",
+        description: "Prepare two CU resources. One APIM selects the active backend for new Analyze requests and signs result URLs with the accepting CU's identity.",
+        gain: "New submissions can continue in another CU region when a qualifying latency observation or submission error requests secondary selection.",
+        limit: "APIM remains a single regional ingress dependency. Existing operations stay with their accepting CU and can be unavailable during its outage. Each processing dependency needs its own review.",
+        setting: "Deploy the sample with two supported CU regions, matching analyzers, model mappings and capacity. Configure a workload-appropriate latency threshold.",
+        caveat: "An ARM-accepted update is not runtime activation. No automatic POST replay, job migration or failback. Model and OCR processing scopes remain independent of CU routing."
       },
       {
         title: "Remove the single gateway-region dependency",
-        scope: "Conceptual extension / not implemented by the demo",
+        scope: "5 / Design extension, not implemented",
         description: "Use Traffic Manager priority DNS routing to choose between two regional APIM endpoints, each fronting a prepared CU stack. After resolution, HTTPS connects directly to the selected APIM, not through Traffic Manager.",
         gain: "New connections can reach a surviving regional gateway after health detection and DNS cache expiry. This addresses an ingress failure domain that stage three leaves exposed.",
         limit: "It is not instant or regionless. Probe design, DNS caches, TLS, quota and regional dependencies still matter. In-flight CU jobs do not move.",
-        caveat: "Both gateways need a shared custom HTTPS hostname/certificate and deliberately coordinated token trust, subscription identity, policy and allowed-host validation. Either gateway must preserve the original CU affinity. The stage-three token binds one gateway; adding DNS alone does not make it portable."
+        setting: "Design regional gateways, a shared HTTPS hostname/certificate, meaningful probes and DNS behavior separately. The sample deploys neither the second gateway nor Traffic Manager.",
+        caveat: "Coordinate token trust, subscription identity, policy and allowed-host validation across gateways. Preserve original CU affinity. The step-4 token binds one gateway; adding DNS alone does not make it portable."
       }
     ];
     let maturityStage = 0;
     let jobIndex = -1;
     let maturityTimer = null;
     let primaryOutage = false;
+    let alternateModel = false;
+    let alternateOcr = false;
     let maturityGraph;
     const svgNamespace = "http://www.w3.org/2000/svg";
     function svgElement(name, attributes, text) {
@@ -309,31 +336,45 @@
       const edge = (id, path, dns = false) => graph.edges.push({ id, path, dns });
       const step = (text, edges, nodes) => graph.steps.push({ text, edges, nodes });
       const region = (x, y, width, height, title, pool = false) => graph.regions.push({ x, y, width, height, title, pool });
-      if (stage < 2) {
-        region(210, 25, stage === 0 ? 810 : 290, 400, "Region A: CU ingress + orchestration");
-        if (stage > 0) {
-          region(540, 35, 475, 160, "Cross-region OCR/layout: Data Zone OR Global", true);
-          region(540, 245, 475, 170, "Cross-region inference: Data Zone OR Global", true);
-        }
+      if (stage < 3) {
+        region(210, 25, 290, 400, "Region A: CU job + result storage");
+        region(540, 25, 475, 200, stage === 2 ? "OCR processing: Data Zone OR Global" : "OCR processing: geography scope", true);
+        region(540, 235, 475, 190, stage > 0 ? "Model processing: Data Zone OR Global" : "Model processing: geography scope", true);
         node("client", 15, 190, 160, "Client", "Analyze + result GET");
-        node("cu", 275, 190, 170, "Regional CU", "Orchestrate / retain results");
-        node("ocr", 645, 80, 240, stage === 1 ? "Cross-region OCR/layout" : "Regional OCR/layout", stage === 1 ? "Eligible GPUs across zone / globe" : "Read / layout processing");
-        node("model", 645, 290, 240, stage === 0 ? "Foundry models" : "Cross-region inference", stage === 0 ? "Regional processing baseline" : "Eligible GPUs across zone / globe");
+        node("cu", 275, 190, 170, "Regional CU", "Job + results: up to 24h");
+        node("ocr", stage === 2 ? 570 : 645, 105, stage === 2 ? 190 : 240, "OCR / layout endpoint", stage === 2 ? "processingLocation" : "Geography processing");
+        node("model", stage > 0 ? 570 : 645, 290, stage > 0 ? 190 : 240, "Foundry model", stage > 0 ? "Deployment type" : "Geography processing");
+        if (stage > 0) {
+          node("model-capacity-a", 815, 255, 185, "Model capacity 1", "Eligible processing region");
+          node("model-capacity-b", 815, 340, 185, "Model capacity 2", "Eligible processing region");
+          edge("model-route-a", "M766 308 H778 Q786 308 786 300 V293 Q786 285 794 285 H809");
+          edge("model-route-b", "M766 338 H778 Q786 338 786 346 V362 Q786 370 794 370 H809");
+        }
+        if (stage === 2) {
+          node("ocr-capacity-a", 815, 65, 185, "OCR capacity 1", "Eligible processing region");
+          node("ocr-capacity-b", 815, 150, 185, "OCR capacity 2", "Eligible processing region");
+          edge("ocr-route-a", "M766 123 H778 Q786 123 786 115 V103 Q786 95 794 95 H809");
+          edge("ocr-route-b", "M766 153 H778 Q786 153 786 161 V172 Q786 180 794 180 H809");
+        }
+        const ocrPort = stage === 2 ? 564 : 639;
+        const modelPort = stage > 0 ? 564 : 639;
         edge("submit", "M181 210 H269");
-        edge("parse", "M451 202 H497 Q505 202 505 194 V112 Q505 104 513 104 H639");
-        edge("parsed", "M639 128 H533 Q525 128 525 136 V210 Q525 218 517 218 H451");
-        edge("infer", "M451 232 H517 Q525 232 525 240 V302 Q525 310 533 310 H639");
-        edge("inferred", "M639 334 H513 Q505 334 505 326 V256 Q505 248 497 248 H451");
+        edge("parse", `M451 202 H497 Q505 202 505 194 V137 Q505 129 513 129 H${ocrPort}`);
+        edge("parsed", `M${ocrPort} 153 H533 Q525 153 525 161 V210 Q525 218 517 218 H451`);
+        edge("infer", `M451 232 H517 Q525 232 525 240 V302 Q525 310 533 310 H${modelPort}`);
+        edge("inferred", `M${modelPort} 334 H513 Q505 334 505 326 V256 Q505 248 497 248 H451`);
         edge("result", "M269 238 H181");
-        step("1. Client submits a new Analyze request directly to the regional CU endpoint.", ["submit"], ["client", "cu"]);
-        step(stage === 1 ? "2. Supported OCR/layout processing can reach eligible GPUs across a Data Zone (such as US or EU) or globally. The public processingLocation control covers prebuilt-read / prebuilt-layout." : "2. CU invokes OCR/layout processing within the illustrated regional scope.", ["parse", "parsed"], ["cu", "ocr"]);
-        step(stage === 1 ? "3. For extraction, model inference can also reach eligible GPUs across a Data Zone or globally through a supported Foundry deployment. This is the same cross-region capacity strategy; OCR-only requests skip this LLM hop." : "3. For extraction, CU calls the configured Foundry models. Model capacity is a separate dependency.", ["infer", "inferred"], ["cu", "model"]);
-        step("4. The client polls and retrieves results from the originating CU endpoint. A broader backend pool has not moved that endpoint.", ["result"], ["cu", "client"]);
+        const modelCapacity = alternateModel ? "b" : "a";
+        const ocrCapacity = alternateOcr ? "b" : "a";
+        step("1. Submit an Analyze request to regional CU. That resource owns the job and stores its data at rest in Region A.", ["submit"], ["client", "cu"]);
+        step(stage === 2 ? "2. For supported prebuilt-read / prebuilt-layout requests, processingLocation permits OCR processing within the selected geography, data zone or globally. The alternate route represents another eligible capacity location." : "2. CU uses its OCR/layout endpoint. Its processing scope is unchanged when only the model deployment type changes.", ["parse", "parsed", ...(stage === 2 ? [`ocr-route-${ocrCapacity}`] : [])], ["cu", "ocr", ...(stage === 2 ? [`ocr-capacity-${ocrCapacity}`] : [])]);
+        step(stage > 0 ? "3. For extraction, a supported Data Zone or Global model deployment routes inference to eligible capacity. OCR-only requests skip this LLM hop. This model setting is independent of OCR processingLocation." : "3. For field extraction, CU calls its configured Foundry model, including Azure OpenAI models. Model endpoint availability and capacity are separate dependencies.", ["infer", "inferred", ...(stage > 0 ? [`model-route-${modelCapacity}`] : [])], ["cu", "model", ...(stage > 0 ? [`model-capacity-${modelCapacity}`] : [])]);
+        step("4. Poll the originating CU resource for the result. Processing scope has not moved the job or its regional storage. Retrieve results before the up-to-24-hour retention expires.", ["result"], ["cu", "client"]);
       } else {
-        const dual = stage === 3;
+        const dual = stage === 4;
         const selected = dual && primaryOutage ? "b" : "a";
-        region(dual ? 220 : 465, 25, dual ? 800 : 555, 195, "Region A: prepared CU + model access");
-        region(dual ? 220 : 465, 240, dual ? 800 : 555, 195, "Region B: prepared CU + model access");
+        region(dual ? 220 : 465, 25, dual ? 800 : 555, 195, "Region A: resources + CU job storage");
+        region(dual ? 220 : 465, 240, dual ? 800 : 555, 195, "Region B: resources + CU job storage");
         node("client", 15, 190, 160, "Client", dual ? "Shared HTTPS hostname" : "One APIM hostname");
         if (dual) {
           node("dns", 15, 40, 180, "Traffic Manager", "DNS selection, not proxy");
@@ -359,10 +400,10 @@
         }
         node("cu-a", 510, 85, 170, "CU A", "Sweden Central");
         node("cu-b", 510, 300, 170, "CU B", "West Europe");
-        node("ocr-a", 775, 55, 220, "OCR / layout A", "Scope chosen independently");
-        node("model-a", 775, 140, 220, "Foundry models A", "Prepared access + quota");
-        node("ocr-b", 775, 270, 220, "OCR / layout B", "Scope chosen independently");
-        node("model-b", 775, 355, 220, "Foundry models B", "Prepared access + quota");
+        node("ocr-a", 775, 55, 220, "OCR / layout A", "Independent processing scope");
+        node("model-a", 775, 140, 220, "Model deployment A", "Independent processing scope");
+        node("ocr-b", 775, 270, 220, "OCR / layout B", "Independent processing scope");
+        node("model-b", 775, 355, 220, "Model deployment B", "Independent processing scope");
         edge("parse-a", "M686 101 H712 Q720 101 720 93 Q720 85 728 85 H769");
         edge("infer-a", "M686 133 H732 Q740 133 740 141 V162 Q740 170 748 170 H769");
         edge("parse-b", "M686 316 H712 Q720 316 720 308 Q720 300 728 300 H769");
@@ -378,7 +419,7 @@
     function stopMaturityPlayback() {
       if (maturityTimer !== null) window.clearInterval(maturityTimer);
       maturityTimer = null;
-      $("job-play").textContent = jobIndex >= 0 && jobIndex < maturityGraph.steps.length - 1 ? "Resume synthetic job" : "Send a synthetic job";
+      $("job-play").textContent = jobIndex >= 0 && jobIndex < maturityGraph.steps.length - 1 ? "Resume request flow" : "Play request flow";
       $("maturity-diagram").classList.remove("maturity-playing");
     }
     function drawMaturityDiagram() {
@@ -396,7 +437,7 @@
       })));
       $("maturity-nodes").replaceChildren(...maturityGraph.nodes.map(node => {
         const group = svgElement("g", { "data-node": node.id });
-        const unavailable = maturityStage === 3 && primaryOutage && (node.id === "gateway-a" || node.id.endsWith("-a"));
+        const unavailable = maturityStage === 4 && primaryOutage && (node.id === "gateway-a" || node.id.endsWith("-a"));
         group.append(svgElement("rect", { x: node.x, y: node.y, width: node.width, height: 66, rx: 9,
           class: "maturity-node" + (currentStep?.nodes.includes(node.id) ? " highlight" : "") + (unavailable ? " unavailable" : "") }),
           svgElement("text", { x: node.x + 11, y: node.y + 25, "font-size": 15, "font-weight": 650 }, node.title));
@@ -415,13 +456,15 @@
         return item;
       }));
       $("job-next").disabled = jobIndex === maturityGraph.steps.length - 1;
-      $("maturity-job-status").textContent = currentStep ? currentStep.text : "Ready. Send a synthetic job or use Next job step to follow the flow.";
+      $("maturity-job-status").textContent = currentStep ? currentStep.text : "Ready. Play the request flow or advance one step at a time.";
       $("maturity-svg-description").textContent = `${maturityStages[maturityStage].title}. ${maturityStages[maturityStage].description} ${currentStep?.text || ""}`;
     }
     function selectMaturityStage(stage) {
       if (maturityGraph) stopMaturityPlayback();
       maturityStage = stage;
       primaryOutage = false;
+      alternateModel = false;
+      alternateOcr = false;
       jobIndex = -1;
       maturityGraph = createMaturityGraph(stage);
       const current = maturityStages[stage];
@@ -432,13 +475,18 @@
       $("stage-description").textContent = current.description;
       $("stage-gain").textContent = current.gain;
       $("stage-limit").textContent = current.limit;
+      $("stage-setting").textContent = current.setting;
       $("stage-caveat").textContent = current.caveat;
       $("stage-previous").disabled = stage === 0;
       $("stage-next").disabled = stage === maturityStages.length - 1;
-      $("region-outage").hidden = stage !== 3;
+      $("region-outage").hidden = stage !== 4;
+      $("model-route").hidden = stage < 1 || stage > 2;
+      $("ocr-route").hidden = stage !== 2;
+      $("model-route").setAttribute("aria-pressed", "false");
+      $("ocr-route").setAttribute("aria-pressed", "false");
       $("region-outage").setAttribute("aria-pressed", "false");
       $("region-outage").textContent = "Illustrate primary-region outage";
-      $("stage-demo-link").textContent = stage === 2 ? "Open this stage's APIM demo page" : "Explore stage 3: APIM demo page";
+      $("stage-demo-link").textContent = stage === 3 ? "Open this step's APIM walkthrough" : "Explore step 4: CU failover";
       document.querySelectorAll("[data-stage]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.stage) === stage)));
       document.querySelectorAll("[data-stage-row]").forEach(row => row.classList.toggle("current", Number(row.dataset.stageRow) === stage));
       stopMaturityPlayback();
@@ -458,7 +506,7 @@
       if (jobIndex === maturityGraph.steps.length - 1) jobIndex = -1;
       if (jobIndex < 0) jobIndex = 0;
       drawMaturityDiagram();
-      $("job-play").textContent = "Pause synthetic job";
+      $("job-play").textContent = "Pause request flow";
       $("maturity-diagram").classList.add("maturity-playing");
       maturityTimer = window.setInterval(() => {
         jobIndex++;
@@ -476,6 +524,16 @@
       drawMaturityDiagram();
       stopMaturityPlayback();
     });
+    ["model", "ocr"].forEach(dependency => $(dependency + "-route").addEventListener("click", () => {
+      stopMaturityPlayback();
+      if (dependency === "model") alternateModel = !alternateModel;
+      else alternateOcr = !alternateOcr;
+      $(dependency + "-route").setAttribute("aria-pressed", String(dependency === "model" ? alternateModel : alternateOcr));
+      maturityGraph = createMaturityGraph(maturityStage);
+      jobIndex = dependency === "model" ? 2 : 1;
+      drawMaturityDiagram();
+      stopMaturityPlayback();
+    }));
     $("maturity-motion").addEventListener("change", () => document.body.classList.toggle("motion", $("maturity-motion").checked));
     reducedMotion.addEventListener("change", event => {
       $("maturity-motion").checked = !event.matches;

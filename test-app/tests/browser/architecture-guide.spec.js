@@ -97,7 +97,7 @@ test("OFFLINE GUIDE: reduced motion and mobile token inspection preserve readabl
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(guideUrl);
   expect(await page.evaluate(() => document.getAnimations().filter((animation) => animation.playState === "running").length)).toBe(0);
-  await page.getByText("Open the synthetic signed-token envelope", { exact: true }).click();
+  await page.getByText("Inspect the example signed token", { exact: true }).click();
   await expect(page.locator("#claims")).toBeVisible();
   const claims = JSON.parse(await page.locator("#claims").textContent());
   expect(Object.keys(claims).sort()).toEqual(["analyzer", "apiVersion", "gateway", "operation", "region", "started", "subscription"]);
